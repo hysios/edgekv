@@ -21,4 +21,28 @@
 // Package edgekv
 package edgekv
 
+import (
+	"html/template"
+	"path"
+	"strings"
+)
+
 type EdgeID string
+
+type Map map[string]interface{}
+
+var topicTpl *template.Template
+
+func (id EdgeID) Topic() string {
+	var sb strings.Builder
+	topicTpl.Execute(&sb, Map{"EdgeID": id})
+	return sb.String()
+}
+
+func (id EdgeID) SubTopic(name string) string {
+	return path.Join(id.Topic(), name)
+}
+
+func init() {
+	topicTpl = template.Must(template.New("edgekv").Parse(TopicPattern))
+}

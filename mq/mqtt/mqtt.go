@@ -53,9 +53,9 @@ func (mq *mqttMQ) ParseURI(uri string) (*mqtt.ClientOptions, error) {
 		return nil, fmt.Errorf("mqtt_mq: parse uri error: %w", err)
 	}
 
+	log.Infof("mqtt: open mqtt at %s", uri)
 	var opts = mqtt.NewClientOptions()
 	opts.AddBroker(fmt.Sprintf("tcp://%s", u.Host))
-	opts.SetClientID(ClientID)
 	opts.SetUsername(u.User.Username())
 	if pass, ok := u.User.Password(); ok {
 		opts.SetPassword(pass)
@@ -67,6 +67,10 @@ func (mq *mqttMQ) ParseURI(uri string) (*mqtt.ClientOptions, error) {
 	opts.OnConnect = mq.connectHandler
 	opts.OnConnectionLost = mq.connectLostHandler
 	mq.parseQuery(opts, u.Query())
+
+	if len(opts.ClientID) == 0 {
+		opts.SetClientID(ClientID)
+	}
 	return opts, nil
 }
 
@@ -82,6 +86,11 @@ func (mq *mqttMQ) parseQuery(opts *mqtt.ClientOptions, q url.Values) {
 			opts.SetConnectTimeout(dt)
 			opts.SetPingTimeout(dt)
 			opts.SetWriteTimeout(dt)
+		case "client_id":
+			opts.SetClientID(q.Get(key))
+		case "clean_session":
+			v, _ := strconv.ParseBool(q.Get(key))
+			opts.SetCleanSession(v)
 		}
 	}
 }

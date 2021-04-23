@@ -49,6 +49,9 @@ func (m *memStore) Bind(prefix string, fn edgekv.ReaderFunc) {
 	panic("not implemented") // TODO: Implement
 }
 
+func (m *memStore) SetSyncer(_ edgekv.MessageQueue) {
+}
+
 func init() {
 	edgekv.RegisterStore("memory", func(args ...string) (edgekv.Store, error) {
 		return OpenMapStore(), nil

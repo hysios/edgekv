@@ -3,6 +3,7 @@ package edgeserve
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -22,8 +23,10 @@ type Map = map[string]interface{}
 
 type EdgeServer struct {
 	http.Server
+	ID edgekv.EdgeID
 
 	store edgekv.Store
+	mq    edgekv.MessageQueue
 }
 
 var serve = EdgeServer{}
@@ -32,7 +35,19 @@ var serve = EdgeServer{}
 // 1. 管理与 Center 数据同步，消息推送
 // 2. 提供 socket 客户端调用 API
 func (serve *EdgeServer) Start() error {
+	var err error
 	serve.Handler = serve
+	if serve.mq == nil || serve.store == nil {
+		return errors.New("edge_server: mq or store is missing")
+	}
+
+	if len(serve.ID) == 0 {
+		return errors.New("missing EdgeID")
+	}
+
+	if err = serve.mq.Subscribe(serve.ID.Topic(), nil); err != nil {
+		return err
+	}
 	return serve.listenUnix()
 }
 
@@ -179,8 +194,16 @@ func (serve *EdgeServer) Stop() error {
 	return serve.Shutdown(ctx)
 }
 
+func (serve *EdgeServer) SetEdgeID(id edgekv.EdgeID) {
+	serve.ID = id
+}
+
 func (serve *EdgeServer) SetStore(store edgekv.Store) {
 	serve.store = store
+}
+
+func (serve *EdgeServer) SetMessageQueue(mq edgekv.MessageQueue) {
+	serve.mq = mq
 }
 
 func Start() error {
@@ -193,6 +216,14 @@ func StartUnix(filename string) error {
 	return Start()
 }
 
+func SetEdgeID(id edgekv.EdgeID) {
+	serve.SetEdgeID(id)
+}
+
 func SetStore(store edgekv.Store) {
 	serve.SetStore(store)
+}
+
+func SetMessageQueue(mq edgekv.MessageQueue) {
+	serve.SetMessageQueue(mq)
 }

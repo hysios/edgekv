@@ -15,6 +15,7 @@ import (
 type buntdbStore struct {
 	edgekv.Accessor
 
+	ID edgekv.EdgeID
 	db *buntdb.DB
 }
 
@@ -161,6 +162,7 @@ func (store *buntdbStore) stepSelect(key string, fn Finder, cb OpFunc) (err erro
 
 func (store *buntdbStore) Sync(changes diff.Changelog) error {
 	log.Debugf("sync diff %#v", changes)
+	// store.mq.Publish()
 	return errors.New("nonimplement")
 }
 

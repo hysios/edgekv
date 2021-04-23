@@ -13,10 +13,13 @@ type (
 
 type Store interface {
 	Get(key string) (val interface{}, ok bool)
-	Set(key string, val interface{})
+	Set(key string, val interface{}) (old interface{}, err error)
 	Watch(prefix string, fn ChangeFunc)
 	Bind(prefix string, fn ReaderFunc)
 	Accessor
+}
+
+type Publisher interface {
 }
 
 type WatchEdge interface {
@@ -26,6 +29,7 @@ type WatchEdge interface {
 type CenterStore interface {
 	Store
 	WatchEdge
+	OpenEdge(edgeID EdgeID) Store
 }
 
 type Accessor interface {

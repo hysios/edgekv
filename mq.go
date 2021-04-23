@@ -2,6 +2,11 @@ package edgekv
 
 import "fmt"
 
+var (
+	PrefixTopic  = "edgekv"
+	TopicPattern = PrefixTopic + "/{{ .EdgeID }}"
+)
+
 type Message struct {
 }
 

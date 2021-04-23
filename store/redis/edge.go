@@ -9,7 +9,7 @@ type EdgeStore struct {
 	master *RedisStore
 }
 
-func (redis *RedisStore) OpenEdge(edgeID edgekv.EdgeID) *EdgeStore {
+func (redis *RedisStore) OpenEdge(edgeID edgekv.EdgeID) edgekv.Store {
 	var store = &EdgeStore{master: redis, ID: edgeID}
 	store.Accessor = edgekv.MakeAccessor(store)
 
@@ -32,4 +32,8 @@ func (edge *EdgeStore) Watch(prefix string, fn edgekv.ChangeFunc) {
 
 func (edge *EdgeStore) Bind(prefix string, fn edgekv.ReaderFunc) {
 	panic("not implemented") // TODO: Implement
+}
+
+func (edge *EdgeStore) SetSyncer(mq edgekv.MessageQueue) {
+	// panic("not implemented") // TODO: Implement
 }

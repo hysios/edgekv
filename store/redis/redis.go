@@ -145,6 +145,9 @@ func (store *RedisStore) Bind(prefix string, fn edgekv.ReaderFunc) {
 	panic("not implemented") // TODO: Implement
 }
 
+func (store *RedisStore) SetSyncer(_ edgekv.MessageQueue) {
+}
+
 func init() {
 	edgekv.RegisterStore("redis", func(args ...string) (edgekv.Store, error) {
 		if len(args) < 1 {
