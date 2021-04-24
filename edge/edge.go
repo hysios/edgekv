@@ -22,7 +22,7 @@ type EdgeStore struct {
 	_host  string
 }
 
-func Open() (edgekv.Store, error) {
+func Open() (edgekv.Database, error) {
 	var store = &EdgeStore{}
 	client := http.Client{
 		Transport: &http.Transport{
@@ -159,6 +159,7 @@ func (edge *EdgeStore) get(key string, q url.Values) (*http.Response, error) {
 // }
 
 func (edge *EdgeStore) Set(key string, val interface{}) {
+	// edge.client.Post()
 	panic("not implemented") // TODO: Implement
 }
 

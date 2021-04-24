@@ -6,6 +6,8 @@ import (
 
 	"github.com/hysios/edgekv"
 	"github.com/hysios/edgekv/store/redis"
+	"github.com/hysios/log"
+	"github.com/r3labs/diff/v2"
 )
 
 var RedisURI = "redis://127.0.0.1:6379?db=2"
@@ -21,7 +23,7 @@ func StartServer() error {
 	return server.Start()
 }
 
-func OpenEdge(edgeID edgekv.EdgeID) (edgekv.Store, error) {
+func OpenEdge(edgeID edgekv.EdgeID) (edgekv.Database, error) {
 	return server.OpenEdge(edgeID), nil
 }
 
@@ -31,7 +33,30 @@ func (serve *CenterServer) Start() error {
 		return errors.New("don't open store or message queue")
 	}
 
-	if err = serve.mq.Subscribe(edgekv.PrefixTopic+"*", nil); err != nil {
+	if err = serve.mq.Subscribe("sync", func(msg edgekv.Message) error {
+		switch msg.Type {
+		case edgekv.CmdChangelog:
+			var (
+				cmdMsg   = msg.Payload.(edgekv.MessageChangelog)
+				val      interface{}
+				ok       bool
+				edgeId   = edgekv.EdgeID(msg.From)
+				doChange diff.Change
+			)
+			doChange = serve.lastChange(cmdMsg.Changes)
+
+			if val, ok = serve.store.Get(cmdMsg.Key); ok {
+				diff.Patch(cmdMsg.Changes, &val)
+			} else {
+				val = doChange.To
+			}
+
+			log.Debugf("key: %s Do [%s] change from %v to %v", cmdMsg.Key, doChange.Type, doChange.From, doChange.To)
+			fullkey := serve.store.EdgeKey(edgeId, cmdMsg.Key)
+			serve.store.Set(fullkey, val)
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 
@@ -42,16 +67,17 @@ func (serve *CenterServer) Start() error {
 	return nil
 }
 
+func (serve *CenterServer) lastChange(changes diff.Changelog) diff.Change {
+	l := len(changes)
+	return changes[l-1]
+}
+
 func (serve *CenterServer) SetStore(store edgekv.CenterStore) {
 	serve.store = store
 }
 
 func (serve *CenterServer) SetMessageQueue(mq edgekv.MessageQueue) {
 	serve.mq = mq
-}
-
-func (serve *CenterServer) OpenEdge(edgeID edgekv.EdgeID) edgekv.Store {
-	return serve.store.OpenEdge(edgeID)
 }
 
 func SetStore(store edgekv.CenterStore) {
@@ -68,6 +94,6 @@ func OpenCenterStore(name string) (edgekv.CenterStore, error) {
 		store, err := edgekv.OpenStore("redis", RedisURI)
 		return store.(*redis.RedisStore), err
 	default:
-		return nil, errors.New("nonimplement")
+		return nil, edgekv.ErrNonimpement
 	}
 }

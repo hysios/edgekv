@@ -1,13 +1,39 @@
 package edgekv
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/hysios/utils/errors"
+	"github.com/r3labs/diff/v2"
+)
 
 var (
 	PrefixTopic  = "edgekv"
 	TopicPattern = PrefixTopic + "/{{ .EdgeID }}"
 )
 
+type Command string
+
+const (
+	CmdChangelog Command = "changelog"
+)
+
 type Message struct {
+	From    string
+	Type    Command
+	Payload interface{}
+}
+
+type msgHead struct {
+	From    string
+	Type    Command
+	Payload json.RawMessage
+}
+
+type MessageChangelog struct {
+	Key     string
+	Changes diff.Changelog
 }
 
 type MessageQueue interface {
@@ -32,4 +58,31 @@ func OpenQueue(name string, args ...string) (MessageQueue, error) {
 	} else {
 		return opener(args...)
 	}
+}
+
+func (msg *Message) UnmarshalJSON(b []byte) error {
+	var (
+		head msgHead
+		err  error
+	)
+
+	if err = json.Unmarshal(b, &head); err != nil {
+		return err
+	}
+
+	msg.From = head.From
+	msg.Type = head.Type
+
+	switch head.Type {
+	case CmdChangelog:
+		var change MessageChangelog
+		if err = json.Unmarshal(head.Payload, &change); err != nil {
+			return err
+		}
+		msg.Payload = change
+	default:
+		return errors.New("invalid message type")
+	}
+
+	return nil
 }

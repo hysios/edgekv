@@ -49,7 +49,11 @@ func testServer() edgekv.Store {
 }
 
 func loadData(store edgekv.Store, val interface{}) {
-	var vals Map
+	var (
+		vals Map
+		err  error
+	)
+
 	if _v, ok := val.(map[string]interface{}); ok {
 		vals = _v
 	} else {
@@ -57,9 +61,15 @@ func loadData(store edgekv.Store, val interface{}) {
 	}
 
 	bunt := store.(*buntdbStore)
+
 	bunt.db.Update(func(tx *buntdb.Tx) error {
 		for key, val := range vals {
-			tx.Set(key, utils.Stringify(val), nil)
+			var b []byte
+			if b, err = utils.Marshal(val); err != nil {
+				return err
+			}
+			// tx.Set(key, utils.Stringify(val), nil)
+			tx.Set(key, string(b), nil)
 		}
 		return nil
 	})
@@ -102,7 +112,7 @@ func Test_buntdbStore_Set(t *testing.T) {
 
 	m, ok := store.Get("test")
 	assert.True(t, ok)
-	assert.Equal(t, m, map[string]interface{}{"createdAt": "2020-01-02T12:59:59Z", "id": float64(1235), "on": true})
+	assert.Equal(t, m, map[string]interface{}{"createdAt": time.Date(2020, 1, 2, 12, 59, 59, 0, time.UTC), "id": 1235, "on": true})
 
 	store.Set("user.profile.money", 10000.00)
 	assert.Equal(t, store.GetFloat64("user.profile.money"), 10000.0)

@@ -1,10 +1,10 @@
 package redis
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
+	"reflect"
 	"strconv"
 
 	"github.com/fatih/structs"
@@ -39,7 +39,7 @@ func OpenRedisStore(uri string) (*RedisStore, error) {
 
 	store.Accessor = edgekv.MakeAccessor(store)
 	store.rdb = rdb
-	store.edgeNode = store.edgekey
+	store.edgeNode = store.EdgeKey
 
 	return store, nil
 }
@@ -87,8 +87,8 @@ func (store *RedisStore) Get(key string) (val interface{}, ok bool) {
 		return nil, false
 	}
 
-	if err = json.Unmarshal(raw, &m); err != nil {
-		log.Debugf("redis_store: unmarshal json error: %s", err)
+	if err = utils.Unmarshal(raw, &m); err != nil {
+		log.Debugf("redis_store: unmarshal  error: %s", err)
 		return nil, false
 	}
 
@@ -96,30 +96,48 @@ func (store *RedisStore) Get(key string) (val interface{}, ok bool) {
 	return val, val != nil
 }
 
-func (store *RedisStore) edgekey(edgeID edgekv.EdgeID, key string) string {
+func (store *RedisStore) EdgeKey(edgeID edgekv.EdgeID, key string) string {
 	return fmt.Sprintf("%s:%s:%s", store.Prefix, edgeID, key)
 }
 
-func (store *RedisStore) Set(key string, val interface{}) {
+func (store *RedisStore) value(val interface{}) interface{} {
+	v := reflect.ValueOf(val)
+	v = reflect.Indirect(v)
+	switch v.Kind() {
+	case reflect.Map:
+		return val
+	case reflect.Struct:
+		return structs.Map(val)
+	default:
+		return val
+	}
+}
+
+func (store *RedisStore) Set(key string, val interface{}) (old interface{}, err error) {
 	var (
 		prefix, subkey = edgekv.SplitKey(key)
 		m              = make(map[string]interface{})
-		err            error
 		raw            []byte
 	)
 
-	if raw, err = store.rdb.Get(prefix).Bytes(); err == nil {
-		// log.Debugf("redis_store: get key %s error: %s", prefix, err)
+	val = store.value(val)
 
-		if err = json.Unmarshal(raw, &m); err != nil {
-			log.Debugf("redis_store: unmarshal json error: %s", err)
+	if raw, err = store.rdb.Get(prefix).Bytes(); err != nil {
+		log.Debugf("redis_store: get key %s error: %s", prefix, err)
+	}
+
+	if len(raw) > 0 {
+		if err = utils.Unmarshal(raw, &m); err != nil {
+			log.Debugf("redis_store: unmarshal error: %s", err)
 			return
 		}
 	}
 
 	if len(subkey) > 0 {
-		mapindex.Set(&m, subkey, mapindex.OptOverwrite())
+		old = mapindex.Get(m, subkey)
+		mapindex.Set(&m, subkey, val, mapindex.OptOverwrite())
 	} else {
+		old = m
 		switch x := val.(type) {
 		case map[string]interface{}:
 			m = x
@@ -128,9 +146,17 @@ func (store *RedisStore) Set(key string, val interface{}) {
 		}
 	}
 
-	if _, err := store.rdb.Set(prefix, utils.Stringify(m), -1).Result(); err != nil {
+	var b []byte
+	if b, err = utils.Marshal(m); err != nil {
+		return nil, err
+	}
+
+	if _, err := store.rdb.Set(prefix, string(b), -1).Result(); err != nil {
+		// if _, err := store.rdb.Set(prefix, utils.Stringify(m), -1).Result(); err != nil {
 		log.Debugf("redis_store: set key %s error: %s", prefix, err)
 	}
+
+	return
 }
 
 func (store *RedisStore) Watch(prefix string, fn edgekv.ChangeFunc) {

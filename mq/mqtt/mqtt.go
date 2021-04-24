@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"path"
@@ -11,6 +12,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/hysios/edgekv"
 	"github.com/hysios/log"
+	"github.com/kr/pretty"
 )
 
 type mqttMQ struct {
@@ -20,7 +22,10 @@ type mqttMQ struct {
 	mqClient mqtt.Client
 }
 
-var ClientID = "TEST"
+var (
+	ClientID = "TEST"
+	QosMode  = 2
+)
 
 func SetClientID(clientID string) {
 	ClientID = clientID
@@ -30,8 +35,10 @@ func SetClientID(clientID string) {
 func OpenMqttMQ(uri string) (*mqttMQ, error) {
 	var (
 		opts *mqtt.ClientOptions
-		mq   = &mqttMQ{}
-		err  error
+		mq   = &mqttMQ{
+			Q: byte(QosMode),
+		}
+		err error
 	)
 
 	if opts, err = mq.ParseURI(uri); err != nil {
@@ -96,7 +103,13 @@ func (mq *mqttMQ) parseQuery(opts *mqtt.ClientOptions, q url.Values) {
 }
 
 func (mq *mqttMQ) Publish(topic string, msg edgekv.Message) error {
-	tok := mq.mqClient.Publish(mq.FullTopic(topic), mq.Q, false, msg)
+	b, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	log.Debugf("mqtt: publish to topic %s with qos mode %d", mq.FullTopic(topic), mq.Q)
+	tok := mq.mqClient.Publish(mq.FullTopic(topic), mq.Q, false, b)
 
 	return mq.Wait(tok)
 }
@@ -114,7 +127,23 @@ func (mq *mqttMQ) FullTopic(_topic string) string {
 }
 
 func (mq *mqttMQ) Subscribe(topic string, fn func(msg edgekv.Message) error) error {
-	tok := mq.mqClient.Subscribe(mq.FullTopic(topic), mq.Q, nil)
+	log.Infof("subscribe topic %s with qos mode %d", mq.FullTopic(topic), mq.Q)
+	tok := mq.mqClient.Subscribe(mq.FullTopic(topic), mq.Q, func(_ mqtt.Client, rawmsg mqtt.Message) {
+		var (
+			msg     edgekv.Message
+			payload = rawmsg.Payload()
+			err     error
+		)
+
+		if err = json.Unmarshal(payload, &msg); err != nil {
+			log.Errorf("mqtt: unmarshal message error %s", err)
+		}
+
+		log.Debugf("msg % #v", pretty.Formatter(msg))
+		if err = fn(msg); err == nil {
+			rawmsg.Ack()
+		}
+	})
 	return mq.Wait(tok)
 }
 

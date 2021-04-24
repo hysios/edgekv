@@ -35,10 +35,12 @@ func (m *memStore) Get(key string) (val interface{}, ok bool) {
 	return
 }
 
-func (m *memStore) Set(key string, val interface{}) {
+func (m *memStore) Set(key string, val interface{}) (old interface{}, err error) {
 	m.init()
 
+	old = mapindex.Get(&m.values, key)
 	mapindex.Set(&m.values, key, val, mapindex.OptOverwrite())
+	return old, nil
 }
 
 func (m *memStore) Watch(prefix string, fn edgekv.ChangeFunc) {

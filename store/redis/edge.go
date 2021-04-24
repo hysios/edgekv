@@ -21,9 +21,14 @@ func (edge *EdgeStore) Get(key string) (val interface{}, ok bool) {
 	return edge.master.Get(fullkey)
 }
 
-func (edge *EdgeStore) Set(key string, val interface{}) {
-	var fullkey = edge.master.edgeNode(edge.ID, key)
+func (edge *EdgeStore) Set(key string, val interface{}) (old interface{}, err error) {
+	var (
+		fullkey = edge.master.edgeNode(edge.ID, key)
+	)
+
+	old, _ = edge.Get(key)
 	edge.master.Set(fullkey, val)
+	return old, nil
 }
 
 func (edge *EdgeStore) Watch(prefix string, fn edgekv.ChangeFunc) {
@@ -32,8 +37,4 @@ func (edge *EdgeStore) Watch(prefix string, fn edgekv.ChangeFunc) {
 
 func (edge *EdgeStore) Bind(prefix string, fn edgekv.ReaderFunc) {
 	panic("not implemented") // TODO: Implement
-}
-
-func (edge *EdgeStore) SetSyncer(mq edgekv.MessageQueue) {
-	// panic("not implemented") // TODO: Implement
 }

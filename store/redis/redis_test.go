@@ -140,7 +140,7 @@ func testServer(t *testing.T) *RedisStore {
 }
 
 func testStore(store *RedisStore, val interface{}) {
-
+	var err error
 	var v map[string]interface{}
 	switch x := val.(type) {
 	case *map[string]interface{}:
@@ -150,7 +150,12 @@ func testStore(store *RedisStore, val interface{}) {
 	}
 
 	for key, partv := range v {
-		store.rdb.Set(key, utils.Stringify(partv), -1).Err()
+		var b []byte
+		if b, err = utils.Marshal(partv); err != nil {
+			log.Errorf("marshal %v", err)
+			continue
+		}
+		store.rdb.Set(key, b, -1).Err()
 	}
 
 }
@@ -160,10 +165,10 @@ func TestRedisStore_Get(t *testing.T) {
 
 	var tests = &testGets{store: store, t: t}
 	tests.get("User.Username", "小张", true)
-	tests.get("User.Age", float64(18), true)
+	tests.get("User.Age", 18, true)
 	tests.get("User.Price", 123.45, true)
 	tests.get("User.Org.OrgUID", "12345", true)
-	tests.get("User.CreatedAt", "1980-01-01T12:34:45Z", true)
+	tests.get("User.CreatedAt", time.Date(1980, 1, 1, 12, 34, 45, 0, time.UTC), true)
 	// bad test
 	tests.get("User.UpdatedAt", nil, false)
 }

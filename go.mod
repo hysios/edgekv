@@ -9,11 +9,14 @@ require (
 	github.com/go-redis/redis v6.15.7+incompatible
 	github.com/go-redis/redis/v8 v8.8.2
 	github.com/go-stomp/stomp v2.1.4+incompatible // indirect
+	github.com/hysios/binary v0.0.0-20210423114437-89610a8c468d
 	github.com/hysios/log v0.0.0-20210420091742-d54e2f0555dd
 	github.com/hysios/mapindex v0.0.6
-	github.com/hysios/utils v0.0.4
-	github.com/kr/pretty v0.1.0
+	github.com/hysios/utils v0.0.6
+	github.com/jinzhu/copier v0.3.0
+	github.com/kr/pretty v0.2.1
 	github.com/r3labs/diff v1.1.0
+	github.com/r3labs/diff/v2 v2.13.0
 	github.com/spf13/afero v1.1.2
 	github.com/spf13/pflag v1.0.3
 	github.com/stretchr/testify v1.7.0
@@ -23,3 +26,7 @@ require (
 )
 
 replace github.com/hysios/log => ../log
+
+replace github.com/hysios/utils => ../../utils
+
+replace github.com/hysios/binary => ../binary

@@ -17,6 +17,7 @@ import (
 	"github.com/hysios/edgekv/edge"
 	"github.com/hysios/log"
 	. "github.com/hysios/utils/response"
+	"github.com/r3labs/diff/v2"
 )
 
 type Map = map[string]interface{}
@@ -73,6 +74,7 @@ func (serve *EdgeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost: // Set
 		var (
 			val = new(interface{})
+			old interface{}
 		)
 
 		if err = serve.decodeType(val, readBody(r.Body), q); err != nil {
@@ -81,7 +83,16 @@ func (serve *EdgeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Debugf("POST: %s with value %v", key, *val)
-		serve.store.Set(key, *val)
+		if old, err = serve.store.Set(key, *val); err != nil {
+			AbortErr(w, http.StatusInternalServerError, err)
+			return
+		}
+
+		if err = serve.Sync(old, *val, key); err != nil {
+			AbortErr(w, http.StatusInternalServerError, err)
+			return
+		}
+
 		Jsonify(w, nil)
 	}
 }
@@ -205,6 +216,47 @@ func (serve *EdgeServer) SetStore(store edgekv.Store) {
 func (serve *EdgeServer) SetMessageQueue(mq edgekv.MessageQueue) {
 	serve.mq = mq
 }
+
+func (serve *EdgeServer) Sync(old, val interface{}, key string) error {
+	var (
+		changes diff.Changelog
+		err     error
+	)
+	switch x := old.(type) {
+	case map[string]interface{}:
+		if changes, err = diff.Diff(x, val); err != nil {
+			changes = diff.Changelog{{
+				Type: diff.DELETE, Path: []string{key},
+			}, {
+				Type: diff.CREATE, Path: []string{key}, To: val,
+			}}
+		}
+	default:
+		if reflect.DeepEqual(old, val) {
+			return nil
+		}
+		if old == nil {
+			changes = diff.Changelog{{Type: diff.CREATE, To: val}}
+		} else {
+			changes = diff.Changelog{{Type: diff.UPDATE, From: x, To: val}}
+		}
+	}
+
+	if len(changes) == 0 {
+		return nil
+	}
+
+	return serve.mq.Publish("sync", edgekv.Message{
+		From: string(serve.ID),
+		Type: edgekv.CmdChangelog,
+		Payload: edgekv.MessageChangelog{
+			Key:     key,
+			Changes: changes,
+		},
+	})
+}
+
+// func (serve *EdgeServer) Topic()
 
 func Start() error {
 	return serve.Start()

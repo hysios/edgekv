@@ -11,11 +11,17 @@ type (
 	ReaderFunc     func(key string) (interface{}, bool)
 )
 
+type Database interface {
+	Get(key string) (val interface{}, ok bool)
+	Set(key string, val interface{})
+	Watch(prefix string, fn ChangeFunc)
+	Bind(prefix string, fn ReaderFunc)
+	Accessor
+}
+
 type Store interface {
 	Get(key string) (val interface{}, ok bool)
 	Set(key string, val interface{}) (old interface{}, err error)
-	Watch(prefix string, fn ChangeFunc)
-	Bind(prefix string, fn ReaderFunc)
 	Accessor
 }
 
@@ -26,10 +32,17 @@ type WatchEdge interface {
 	WatchEdges(prefix string, fn EdgeChangeFunc)
 }
 
+type CenterDatabase interface {
+	Store
+	WatchEdge
+	OpenEdge(edgeID EdgeID) Database
+}
+
 type CenterStore interface {
 	Store
 	WatchEdge
 	OpenEdge(edgeID EdgeID) Store
+	EdgeKey(edgeID EdgeID, key string) string
 }
 
 type Accessor interface {

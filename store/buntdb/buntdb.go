@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/fatih/structs"
 	"github.com/hysios/edgekv"
 	"github.com/hysios/edgekv/utils"
 	"github.com/hysios/log"
 	"github.com/hysios/mapindex"
-	"github.com/r3labs/diff"
 	"github.com/tidwall/buntdb"
 )
 
@@ -44,62 +44,54 @@ func (store *buntdbStore) Get(key string) (val interface{}, ok bool) {
 	return val, true
 }
 
-func (store *buntdbStore) Set(key string, val interface{}) {
+func (store *buntdbStore) Set(key string, val interface{}) (old interface{}, err error) {
 	var (
-		prefix, subkey string
-		parent         interface{}
-		keyval         interface{}
-		err            error
-		changes        diff.Changelog
+		prefix, subkey = edgekv.SplitKey(key)
+		m              = make(map[string]interface{})
 	)
 
-	// 阶段载入 key 的父对像与子键值
-	if err = store.stepSelect(key, store.db.View, func(_prefix, _subkey, raw string, tx *buntdb.Tx) error {
-		prefix = _prefix
-		subkey = _subkey
-		parent = utils.JSON(raw)
-		if len(_subkey) > 0 {
-			keyval = mapindex.Get(parent, subkey)
+	store.db.View(func(tx *buntdb.Tx) error {
+		raw, err := tx.Get(prefix)
+		if err != nil {
+			return err
 		}
+
+		if err = utils.Unmarshal([]byte(raw), &m); err != nil {
+			return fmt.Errorf("buntdb_store: unmarshal error: %w", err)
+		}
+
 		return nil
-	}); err != nil {
-		log.Infof("buntdb: set key %s with val %v error: %s", key, val, err)
-	}
+	})
 
-	if len(subkey) > 0 { // 子值存储
-		if err = mapindex.Set(parent, subkey, val); err != nil {
-			log.Error(err)
-			return
-		}
-		// 存储到指定的 key 数据库中去
-		if err = store.db.Update(func(tx *buntdb.Tx) error {
-			_, _, err = tx.Set(prefix, utils.Stringify(parent), nil)
-			return err
-		}); err != nil {
-			log.Errorf("buntdb: set new value error: %s", err)
-			return
-		}
-		changes = diff.Changelog{{Type: diff.UPDATE, Path: []string{key}, From: keyval, To: val}}
+	if len(subkey) > 0 {
+		old = mapindex.Get(m, subkey)
+		mapindex.Set(&m, subkey, val, mapindex.OptOverwrite())
 	} else {
-		// 存储整个map数据库中去
-		if err = store.db.Update(func(tx *buntdb.Tx) error {
-			_, _, err = tx.Set(prefix, utils.Stringify(val), nil)
-			return err
-		}); err != nil {
-			log.Errorf("buntdb: set new value error: %s", err)
-			return
+		old = m
+
+		switch x := val.(type) {
+		case map[string]interface{}:
+			m = x
+		default:
+			m = structs.Map(val)
 		}
 
-		if changes, err = diff.Diff(parent, val); err != nil {
-			changes = diff.Changelog{{
-				Type: diff.DELETE, Path: []string{key},
-			}, {
-				Type: diff.CREATE, Path: []string{key}, To: val,
-			}}
-		}
 	}
 
-	store.Sync(changes)
+	if err = store.db.Update(func(tx *buntdb.Tx) error {
+		var b []byte
+		// _, _, err = tx.Set(prefix,  utils.Stringify(m), nil)
+		if b, err = utils.Marshal(m); err != nil {
+			return err
+		}
+		_, _, err = tx.Set(prefix, string(b), nil)
+		return err
+	}); err != nil {
+		return nil, err
+	}
+
+	return
+
 }
 
 func (store *buntdbStore) Watch(prefix string, fn edgekv.ChangeFunc) {
@@ -111,27 +103,25 @@ func (store *buntdbStore) Bind(prefix string, fn edgekv.ReaderFunc) {
 }
 
 func (store *buntdbStore) get(key string) (val interface{}, err error) {
+	var (
+		prefix, subkey = edgekv.SplitKey(key)
+		raw            string
+		out            = make(map[string]interface{})
+	)
 
-	var subkey string
-	if err = store.stepSelect(key, store.db.View, func(prefix, _subkey, raw string, tx *buntdb.Tx) error {
-		val = utils.JSON(raw)
-		subkey = _subkey
-
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-
-	switch x := val.(type) {
-	case map[string]interface{}:
-		if len(subkey) > 0 {
-			val = mapindex.Get(x, subkey)
+	store.db.View(func(tx *buntdb.Tx) error {
+		if raw, err = tx.Get(prefix); err != nil {
+			return err
 		}
-		return val, nil
+		return utils.Unmarshal([]byte(raw), &out)
+	})
 
-	default:
-		return x, nil
+	if len(subkey) > 0 {
+		val = mapindex.Get(out, subkey)
+	} else {
+		val = out
 	}
+	return val, nil
 }
 
 type (
@@ -160,11 +150,11 @@ func (store *buntdbStore) stepSelect(key string, fn Finder, cb OpFunc) (err erro
 	return nil
 }
 
-func (store *buntdbStore) Sync(changes diff.Changelog) error {
-	log.Debugf("sync diff %#v", changes)
-	// store.mq.Publish()
-	return errors.New("nonimplement")
-}
+// func (store *buntdbStore) Sync(changes diff.Changelog) error {
+// 	log.Debugf("sync diff %#v", changes)
+// 	// store.mq.Publish()
+// 	return errors.New("nonimplement")
+// }
 
 func init() {
 	edgekv.RegisterStore("buntdb", func(args ...string) (edgekv.Store, error) {
