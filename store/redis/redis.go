@@ -83,7 +83,7 @@ func (store *RedisStore) Get(key string) (val interface{}, ok bool) {
 	)
 
 	if raw, err = store.rdb.Get(prefix).Bytes(); err != nil {
-		log.Debugf("redis_store: get key %s error: %s", prefix, err)
+		log.Debugf("redis_store: get key '%s' error: %s", prefix, err)
 		return nil, false
 	}
 
@@ -123,7 +123,7 @@ func (store *RedisStore) Set(key string, val interface{}) (old interface{}, err 
 	val = store.value(val)
 
 	if raw, err = store.rdb.Get(prefix).Bytes(); err != nil {
-		log.Debugf("redis_store: get key %s error: %s", prefix, err)
+		log.Debugf("redis_store: get key '%s' error: %s", prefix, err)
 	}
 
 	if len(raw) > 0 {

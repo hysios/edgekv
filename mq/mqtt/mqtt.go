@@ -11,6 +11,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/hysios/edgekv"
+	"github.com/hysios/edgekv/utils"
 	"github.com/hysios/log"
 	"github.com/kr/pretty"
 )
@@ -102,8 +103,14 @@ func (mq *mqttMQ) parseQuery(opts *mqtt.ClientOptions, q url.Values) {
 	}
 }
 
+type sendMsg struct {
+	From    string
+	Type    string
+	Payload json.RawMessage
+}
+
 func (mq *mqttMQ) Publish(topic string, msg edgekv.Message) error {
-	b, err := json.Marshal(msg)
+	b, err := utils.Marshal(msg)
 	if err != nil {
 		return err
 	}
@@ -130,13 +137,25 @@ func (mq *mqttMQ) Subscribe(topic string, fn func(msg edgekv.Message) error) err
 	log.Infof("subscribe topic %s with qos mode %d", mq.FullTopic(topic), mq.Q)
 	tok := mq.mqClient.Subscribe(mq.FullTopic(topic), mq.Q, func(_ mqtt.Client, rawmsg mqtt.Message) {
 		var (
-			msg     edgekv.Message
-			payload = rawmsg.Payload()
-			err     error
+			msg edgekv.Message
+			err error
 		)
 
-		if err = json.Unmarshal(payload, &msg); err != nil {
+		if err = utils.Unmarshal(rawmsg.Payload(), &msg); err != nil {
 			log.Errorf("mqtt: unmarshal message error %s", err)
+			return
+			// return err
+		}
+
+		switch msg.Type {
+		case edgekv.CmdChangelog:
+			msg.Payload = edgekv.MessageChangelog{}
+		}
+
+		if err = utils.Unmarshal(rawmsg.Payload(), &msg); err != nil {
+			log.Errorf("mqtt: unmarshal message error %s", err)
+			return
+			// return err
 		}
 
 		log.Debugf("msg % #v", pretty.Formatter(msg))
@@ -163,4 +182,5 @@ func init() {
 	edgekv.RegisterQueue("mqtt", func(args ...string) (edgekv.MessageQueue, error) {
 		return OpenMqttMQ(args[0])
 	})
+	// gob.Register(new(edgekv.MessageChangelog))
 }

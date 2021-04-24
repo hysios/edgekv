@@ -5,6 +5,8 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"time"
+
+	"github.com/hysios/edgekv"
 )
 
 func Stringify(val interface{}) string {
@@ -46,4 +48,8 @@ func init() {
 	gob.Register(new(time.Duration))
 	gob.Register(new([]interface{}))
 	gob.Register(new(interface{}))
+	gob.Register(new(edgekv.MessageChangelog))
+	// gob.RegisterName("Message", new(edgekv.Message))
+	gob.RegisterName("*edgekv.Message", new(edgekv.Message))
+
 }

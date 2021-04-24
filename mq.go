@@ -1,10 +1,8 @@
 package edgekv
 
 import (
-	"encoding/json"
 	"fmt"
 
-	"github.com/hysios/utils/errors"
 	"github.com/r3labs/diff/v2"
 )
 
@@ -23,12 +21,6 @@ type Message struct {
 	From    string
 	Type    Command
 	Payload interface{}
-}
-
-type msgHead struct {
-	From    string
-	Type    Command
-	Payload json.RawMessage
 }
 
 type MessageChangelog struct {
@@ -60,29 +52,29 @@ func OpenQueue(name string, args ...string) (MessageQueue, error) {
 	}
 }
 
-func (msg *Message) UnmarshalJSON(b []byte) error {
-	var (
-		head msgHead
-		err  error
-	)
+// func (msg *Message) UnmarshalJSON(b []byte) error {
+// 	var (
+// 		head msgHead
+// 		err  error
+// 	)
 
-	if err = json.Unmarshal(b, &head); err != nil {
-		return err
-	}
+// 	if err = json.Unmarshal(b, &head); err != nil {
+// 		return err
+// 	}
 
-	msg.From = head.From
-	msg.Type = head.Type
+// 	msg.From = head.From
+// 	msg.Type = head.Type
 
-	switch head.Type {
-	case CmdChangelog:
-		var change MessageChangelog
-		if err = json.Unmarshal(head.Payload, &change); err != nil {
-			return err
-		}
-		msg.Payload = change
-	default:
-		return errors.New("invalid message type")
-	}
+// 	switch head.Type {
+// 	case CmdChangelog:
+// 		var change MessageChangelog
+// 		if err = utils.Unmarshal(head.Payload, &change); err != nil {
+// 			return err
+// 		}
+// 		msg.Payload = change
+// 	default:
+// 		return errors.New("invalid message type")
+// 	}
 
-	return nil
-}
+// 	return nil
+// }

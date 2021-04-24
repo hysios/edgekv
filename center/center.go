@@ -37,7 +37,7 @@ func (serve *CenterServer) Start() error {
 		switch msg.Type {
 		case edgekv.CmdChangelog:
 			var (
-				cmdMsg   = msg.Payload.(edgekv.MessageChangelog)
+				cmdMsg   = msg.Payload.(*edgekv.MessageChangelog)
 				val      interface{}
 				ok       bool
 				edgeId   = edgekv.EdgeID(msg.From)
@@ -51,8 +51,8 @@ func (serve *CenterServer) Start() error {
 				val = doChange.To
 			}
 
-			log.Debugf("key: %s Do [%s] change from %v to %v", cmdMsg.Key, doChange.Type, doChange.From, doChange.To)
 			fullkey := serve.store.EdgeKey(edgeId, cmdMsg.Key)
+			log.Debugf("store => %s Do [%s] change from %v to %v", fullkey, doChange.Type, doChange.From, doChange.To)
 			serve.store.Set(fullkey, val)
 		}
 		return nil

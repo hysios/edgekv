@@ -11,3 +11,9 @@ doc:
 	@godoc &
 	@sleep 0.5
 	@open "http://127.0.0.1:6060/pkg/$(PKG_NAME)"
+
+dev-center:
+	@air -c .center.toml
+
+dev-edge:
+	@air -c .edge.toml
