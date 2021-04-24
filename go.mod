@@ -13,6 +13,7 @@ require (
 	github.com/hysios/log v0.0.0-20210420091742-d54e2f0555dd
 	github.com/hysios/mapindex v0.0.6
 	github.com/hysios/utils v0.0.6
+	github.com/imdario/mergo v0.3.12
 	github.com/jinzhu/copier v0.3.0
 	github.com/kr/pretty v0.2.1
 	github.com/r3labs/diff v1.1.0
@@ -22,7 +23,9 @@ require (
 	github.com/stretchr/testify v1.7.0
 	github.com/tidwall/buntdb v1.2.3
 	github.com/tj/assert v0.0.3
+	go.uber.org/atomic v1.6.0
 	golang.org/x/exp v0.0.0-20210126221216-84987778548c
+	golang.org/x/oauth2 v0.0.0-20180821212333-d2e6202438be
 )
 
 replace github.com/hysios/log => ../log

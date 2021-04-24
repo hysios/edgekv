@@ -6,8 +6,8 @@ import (
 )
 
 type (
-	ChangeFunc     func(key string, changs ChangeLog) error
-	EdgeChangeFunc func(key string, edgeID EdgeID, changes ChangeLog) error
+	ChangeFunc     func(key string, old, new interface{}) error
+	EdgeChangeFunc func(key string, edgeID EdgeID, old, new interface{}) error
 	ReaderFunc     func(key string) (interface{}, bool)
 )
 

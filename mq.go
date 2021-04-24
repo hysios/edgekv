@@ -31,6 +31,7 @@ type MessageChangelog struct {
 type MessageQueue interface {
 	Publish(topic string, msg Message) error
 	Subscribe(topic string, fn func(msg Message) error) error
+	Close() error
 }
 
 type OpenQueueFunc func(args ...string) (MessageQueue, error)
@@ -52,29 +53,12 @@ func OpenQueue(name string, args ...string) (MessageQueue, error) {
 	}
 }
 
-// func (msg *Message) UnmarshalJSON(b []byte) error {
-// 	var (
-// 		head msgHead
-// 		err  error
-// 	)
-
-// 	if err = json.Unmarshal(b, &head); err != nil {
-// 		return err
-// 	}
-
-// 	msg.From = head.From
-// 	msg.Type = head.Type
-
-// 	switch head.Type {
-// 	case CmdChangelog:
-// 		var change MessageChangelog
-// 		if err = utils.Unmarshal(head.Payload, &change); err != nil {
-// 			return err
-// 		}
-// 		msg.Payload = change
-// 	default:
-// 		return errors.New("invalid message type")
-// 	}
-
-// 	return nil
-// }
+func (msg *Message) Build() bool {
+	switch msg.Type {
+	case CmdChangelog:
+		msg.Payload = MessageChangelog{}
+	default:
+		return false
+	}
+	return true
+}

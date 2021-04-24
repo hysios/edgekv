@@ -13,6 +13,7 @@ import (
 	"github.com/hysios/edgekv"
 	"github.com/hysios/edgekv/utils"
 	"github.com/hysios/log"
+	"github.com/imdario/mergo"
 	"github.com/kr/pretty"
 )
 
@@ -82,8 +83,14 @@ func (mq *mqttMQ) ParseURI(uri string) (*mqtt.ClientOptions, error) {
 	return opts, nil
 }
 
-func (mq *mqttMQ) parseQuery(opts *mqtt.ClientOptions, q url.Values) {
+var defaultMqttQuery = url.Values{
+	"connect_retry_interval": []string{"10s"},
+	"connect_retry":          []string{"true"},
+}
 
+func (mq *mqttMQ) parseQuery(opts *mqtt.ClientOptions, q url.Values) {
+	mergo.Map(&q, defaultMqttQuery)
+	log.Infof("mqtt query %s", q)
 	for key := range q {
 		switch key {
 		case "auto_reconnect":
@@ -99,6 +106,12 @@ func (mq *mqttMQ) parseQuery(opts *mqtt.ClientOptions, q url.Values) {
 		case "clean_session":
 			v, _ := strconv.ParseBool(q.Get(key))
 			opts.SetCleanSession(v)
+		case "connect_retry_interval":
+			dt, _ := time.ParseDuration(q.Get(key))
+			opts.SetConnectRetryInterval(dt)
+		case "connect_retry":
+			v, _ := strconv.ParseBool(q.Get(key))
+			opts.SetConnectRetry(v)
 		}
 	}
 }
@@ -147,10 +160,7 @@ func (mq *mqttMQ) Subscribe(topic string, fn func(msg edgekv.Message) error) err
 			// return err
 		}
 
-		switch msg.Type {
-		case edgekv.CmdChangelog:
-			msg.Payload = edgekv.MessageChangelog{}
-		}
+		msg.Build()
 
 		if err = utils.Unmarshal(rawmsg.Payload(), &msg); err != nil {
 			log.Errorf("mqtt: unmarshal message error %s", err)
@@ -164,6 +174,11 @@ func (mq *mqttMQ) Subscribe(topic string, fn func(msg edgekv.Message) error) err
 		}
 	})
 	return mq.Wait(tok)
+}
+
+func (mq *mqttMQ) Close() error {
+	mq.mqClient.Disconnect(250)
+	return nil
 }
 
 func (mq *mqttMQ) connectHandler(client mqtt.Client) {

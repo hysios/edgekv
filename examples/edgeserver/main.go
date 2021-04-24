@@ -9,7 +9,7 @@ import (
 	_ "github.com/hysios/edgekv/store/buntdb"
 )
 
-const ClientID = "ABETEST1"
+const ClientID = "OnlyTest"
 
 func main() {
 	store, _ := edgekv.OpenStore("buntdb", "edgekv.db")

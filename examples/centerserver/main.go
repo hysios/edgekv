@@ -15,8 +15,22 @@ func main() {
 	LogFatalf(err)
 	mq, err := edgekv.OpenQueue("mqtt", "mqtt://127.0.0.1:1883/edgekv")
 	LogFatalf(err)
+	defer mq.Close()
+
 	center.SetStore(store)
 	center.SetMessageQueue(mq)
+	edge, err := center.OpenEdge("OnlyTest")
+	LogFatalf(err)
+
+	edge.Watch("test.*", func(key string, old, new interface{}) error {
+		log.Infof("watch %v", key)
+		return nil
+	})
+
+	center.WatchEdges("test.*", func(key string, edgeID edgekv.EdgeID, old, new interface{}) error {
+		log.Infof("watch from %s => %v", edgeID, key)
+		return nil
+	})
 
 	log.Infof("start Edgekv Center server ")
 	LogFatalf(center.StartServer())

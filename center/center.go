@@ -13,8 +13,9 @@ import (
 var RedisURI = "redis://127.0.0.1:6379?db=2"
 
 type CenterServer struct {
-	store edgekv.CenterStore
-	mq    edgekv.MessageQueue
+	store    edgekv.CenterStore
+	mq       edgekv.MessageQueue
+	listener edgekv.Listener
 }
 
 var server = &CenterServer{}
@@ -29,9 +30,12 @@ func OpenEdge(edgeID edgekv.EdgeID) (edgekv.Database, error) {
 
 func (serve *CenterServer) Start() error {
 	var err error
+
 	if serve.store == nil || serve.mq == nil {
 		return errors.New("don't open store or message queue")
 	}
+
+	go serve.listener.Start()
 
 	if err = serve.mq.Subscribe("sync", func(msg edgekv.Message) error {
 		switch msg.Type {
@@ -54,6 +58,18 @@ func (serve *CenterServer) Start() error {
 			fullkey := serve.store.EdgeKey(edgeId, cmdMsg.Key)
 			log.Debugf("store => %s Do [%s] change from %v to %v", fullkey, doChange.Type, doChange.From, doChange.To)
 			serve.store.Set(fullkey, val)
+			var event = WatchEvent{
+				Key:  cmdMsg.Key,
+				From: edgekv.EdgeID(msg.From),
+				Old:  val,
+				Val:  doChange.To,
+				Done: func(ok bool) {
+					if ok {
+					}
+				},
+			}
+
+			serve.dispatch(fullkey, event)
 		}
 		return nil
 	}); err != nil {
@@ -65,6 +81,10 @@ func (serve *CenterServer) Start() error {
 	}
 
 	return nil
+}
+
+func (serve *CenterServer) Stop() error {
+	return serve.listener.Close()
 }
 
 func (serve *CenterServer) lastChange(changes diff.Changelog) diff.Change {
@@ -80,12 +100,46 @@ func (serve *CenterServer) SetMessageQueue(mq edgekv.MessageQueue) {
 	serve.mq = mq
 }
 
+type WatchEvent struct {
+	Key  string
+	From edgekv.EdgeID
+	Old  interface{}
+	Val  interface{}
+	Done func(bool)
+}
+
+func (serve *CenterServer) watch(prefix string, fn edgekv.ChangeFunc) {
+	log.Infof("centerServer: watch '%s'", prefix)
+	serve.listener.Watch(prefix, func(key string, payload interface{}) {
+		var event = payload.(WatchEvent)
+		event.Done(fn(event.Key, event.Old, event.Val) == nil)
+	})
+}
+
+func (serve *CenterServer) WatchEdges(prefix string, fn edgekv.EdgeChangeFunc) {
+	var edgesPreifx = "*:" + prefix
+	log.Infof("centerServer: watch edges '%s'", edgesPreifx)
+
+	serve.listener.Watch(edgesPreifx, func(key string, payload interface{}) {
+		var event = payload.(WatchEvent)
+		event.Done(fn(event.Key, edgekv.EdgeID(event.From), event.Old, event.Val) == nil)
+	})
+}
+
+func (serve *CenterServer) dispatch(key string, event WatchEvent) {
+	serve.listener.Dispatch(key, event)
+}
+
 func SetStore(store edgekv.CenterStore) {
 	server.SetStore(store)
 }
 
 func SetMessageQueue(mq edgekv.MessageQueue) {
 	server.SetMessageQueue(mq)
+}
+
+func WatchEdges(prefix string, fn edgekv.EdgeChangeFunc) {
+	server.WatchEdges(prefix, fn)
 }
 
 func OpenCenterStore(name string) (edgekv.CenterStore, error) {

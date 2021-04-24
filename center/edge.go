@@ -6,14 +6,16 @@ import (
 
 type CenterDatabase struct {
 	edgekv.Accessor
-	ID    edgekv.EdgeID
-	store edgekv.Store
+	ID     edgekv.EdgeID
+	master *CenterServer
+	store  edgekv.Store
 }
 
 func (serve *CenterServer) OpenEdge(edgeID edgekv.EdgeID) edgekv.Database {
 	var database = &CenterDatabase{
-		ID:    edgeID,
-		store: serve.store.OpenEdge(edgeID),
+		ID:     edgeID,
+		store:  serve.store.OpenEdge(edgeID),
+		master: serve,
 	}
 
 	database.Accessor = edgekv.MakeAccessor(database)
@@ -22,17 +24,21 @@ func (serve *CenterServer) OpenEdge(edgeID edgekv.EdgeID) edgekv.Database {
 }
 
 func (center *CenterDatabase) Get(key string) (val interface{}, ok bool) {
-	panic("not implemented") // TODO: Implement
+	return center.store.Get(center.Fullkey(key))
 }
 
 func (center *CenterDatabase) Set(key string, val interface{}) {
-	panic("not implemented") // TODO: Implement
+	center.store.Set(center.Fullkey(key), val)
 }
 
 func (center *CenterDatabase) Watch(prefix string, fn edgekv.ChangeFunc) {
-	panic("not implemented") // TODO: Implement
+	center.master.watch(center.Fullkey(prefix), fn)
 }
 
 func (center *CenterDatabase) Bind(prefix string, fn edgekv.ReaderFunc) {
 	panic("not implemented") // TODO: Implement
+}
+
+func (center *CenterDatabase) Fullkey(key string) string {
+	return center.master.store.EdgeKey(center.ID, key)
 }
