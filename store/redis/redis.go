@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"reflect"
 	"strconv"
+	"time"
 
 	"github.com/fatih/structs"
 	"github.com/go-redis/redis"
@@ -45,6 +46,7 @@ func OpenRedisStore(uri string) (*RedisStore, error) {
 }
 
 func (store *RedisStore) ParseURI(uri string) (*redis.Client, error) {
+	log.Infof("open redis store at %s", uri)
 	var u, err = url.Parse(uri)
 	if err != nil {
 		return nil, fmt.Errorf("redis_store: parse open uri error %w", err)
@@ -92,13 +94,19 @@ func (store *RedisStore) Get(key string) (val interface{}, ok bool) {
 		return nil, false
 	}
 
-	val = mapindex.Get(m, subkey)
+	if len(subkey) > 0 {
+		val = mapindex.Get(m, subkey)
+	} else {
+		val = m
+	}
 	return val, val != nil
 }
 
 func (store *RedisStore) EdgeKey(edgeID edgekv.EdgeID, key string) string {
-	return fmt.Sprintf("%s:%s:%s", store.Prefix, edgeID, key)
+	return edgekv.Edgekey(edgeID, key)
 }
+
+var timeType = reflect.TypeOf(new(time.Time)).Elem()
 
 func (store *RedisStore) value(val interface{}) interface{} {
 	v := reflect.ValueOf(val)
@@ -107,7 +115,11 @@ func (store *RedisStore) value(val interface{}) interface{} {
 	case reflect.Map:
 		return val
 	case reflect.Struct:
-		return structs.Map(val)
+		if v.Type() != timeType {
+			return structs.Map(val)
+		} else {
+			return val
+		}
 	default:
 		return val
 	}

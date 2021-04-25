@@ -1,9 +1,15 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+
+	"github.com/gorilla/mux"
 	"github.com/hysios/edgekv"
 	"github.com/hysios/edgekv/center"
 	"github.com/hysios/log"
+	. "github.com/hysios/utils/response"
 
 	_ "github.com/hysios/edgekv/mq/mqtt"
 	_ "github.com/hysios/edgekv/store/redis"
@@ -32,10 +38,73 @@ func main() {
 		return nil
 	})
 
+	r := mux.NewRouter()
+	r.Path("/{edgeID}/{key}").
+		Methods("GET").
+		HandlerFunc(GetKey)
+
+	r.Path("/{edgeID}/{key}").
+		Methods("POST").
+		HandlerFunc(SetKey)
+
+	// Only matches if domain is "www.example.com".
+	// http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+
+	// })
+
 	log.Infof("start Edgekv Center server ")
-	LogFatalf(center.StartServer())
+	go func() {
+		LogFatalf(center.StartServer())
+	}()
+
+	log.Fatal(http.ListenAndServe(":9097", r))
 }
 
+func GetKey(w http.ResponseWriter, r *http.Request) {
+	var (
+		params = mux.Vars(r)
+		key    = params["key"]
+		edgeID = params["edgeID"]
+	)
+	edge, err := center.OpenEdge(edgekv.EdgeID(edgeID))
+	if err != nil {
+		AbortErr(w, http.StatusNotFound, err)
+		return
+	}
+
+	if val, ok := edge.Get(key); ok {
+		log.Infof("get '%s' value => %v", key, val)
+		Jsonify(w, &map[string]interface{}{"data": val})
+	} else {
+		AbortErr(w, http.StatusNotFound, fmt.Errorf("not found key '%s'", key))
+		return
+	}
+}
+
+func SetKey(w http.ResponseWriter, r *http.Request) {
+	var (
+		params = mux.Vars(r)
+		key    = params["key"]
+		edgeID = params["edgeID"]
+		val    = new(interface{})
+	)
+	edge, err := center.OpenEdge(edgekv.EdgeID(edgeID))
+	if err != nil {
+		AbortErr(w, http.StatusNotFound, err)
+		return
+	}
+
+	var dec = json.NewDecoder(r.Body)
+	if err = dec.Decode(val); err != nil {
+		AbortErr(w, http.StatusBadRequest, err)
+		return
+	}
+
+	edge.Set(key, *val)
+	log.Infof("set '%s' value => %v", key, val)
+
+	Jsonify(w, nil)
+}
 func LogFatalf(err error) {
 	if err != nil {
 		log.Fatal(err)

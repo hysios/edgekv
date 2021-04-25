@@ -37,6 +37,7 @@ func (serve *CenterServer) Start() error {
 
 	go serve.listener.Start()
 
+	// 订阅中心同步频道
 	if err = serve.mq.Subscribe("sync", func(msg edgekv.Message) error {
 		switch msg.Type {
 		case edgekv.CmdChangelog:
@@ -49,16 +50,17 @@ func (serve *CenterServer) Start() error {
 			)
 			doChange = serve.lastChange(cmdMsg.Changes)
 
-			if val, ok = serve.store.Get(cmdMsg.Key); ok {
+			fullkey := serve.store.EdgeKey(edgeId, cmdMsg.Key)
+			if val, ok = serve.store.Get(fullkey); ok {
 				diff.Patch(cmdMsg.Changes, &val)
+				log.Infof("new val %v", val)
 			} else {
 				val = doChange.To
 			}
 
-			fullkey := serve.store.EdgeKey(edgeId, cmdMsg.Key)
 			log.Debugf("store => %s Do [%s] change from %v to %v", fullkey, doChange.Type, doChange.From, doChange.To)
 			serve.store.Set(fullkey, val)
-			var event = WatchEvent{
+			var event = edgekv.WatchEvent{
 				Key:  cmdMsg.Key,
 				From: edgekv.EdgeID(msg.From),
 				Old:  val,
@@ -87,11 +89,6 @@ func (serve *CenterServer) Stop() error {
 	return serve.listener.Close()
 }
 
-func (serve *CenterServer) lastChange(changes diff.Changelog) diff.Change {
-	l := len(changes)
-	return changes[l-1]
-}
-
 func (serve *CenterServer) SetStore(store edgekv.CenterStore) {
 	serve.store = store
 }
@@ -100,33 +97,30 @@ func (serve *CenterServer) SetMessageQueue(mq edgekv.MessageQueue) {
 	serve.mq = mq
 }
 
-type WatchEvent struct {
-	Key  string
-	From edgekv.EdgeID
-	Old  interface{}
-	Val  interface{}
-	Done func(bool)
-}
-
-func (serve *CenterServer) watch(prefix string, fn edgekv.ChangeFunc) {
-	log.Infof("centerServer: watch '%s'", prefix)
-	serve.listener.Watch(prefix, func(key string, payload interface{}) {
-		var event = payload.(WatchEvent)
-		event.Done(fn(event.Key, event.Old, event.Val) == nil)
-	})
-}
-
 func (serve *CenterServer) WatchEdges(prefix string, fn edgekv.EdgeChangeFunc) {
 	var edgesPreifx = "*:" + prefix
 	log.Infof("centerServer: watch edges '%s'", edgesPreifx)
 
 	serve.listener.Watch(edgesPreifx, func(key string, payload interface{}) {
-		var event = payload.(WatchEvent)
+		var event = payload.(edgekv.WatchEvent)
 		event.Done(fn(event.Key, edgekv.EdgeID(event.From), event.Old, event.Val) == nil)
 	})
 }
 
-func (serve *CenterServer) dispatch(key string, event WatchEvent) {
+func (serve *CenterServer) lastChange(changes diff.Changelog) diff.Change {
+	l := len(changes)
+	return changes[l-1]
+}
+
+func (serve *CenterServer) watch(prefix string, fn edgekv.ChangeFunc) {
+	log.Infof("centerServer: watch '%s'", prefix)
+	serve.listener.Watch(prefix, func(key string, payload interface{}) {
+		var event = payload.(edgekv.WatchEvent)
+		event.Done(fn(event.Key, event.Old, event.Val) == nil)
+	})
+}
+
+func (serve *CenterServer) dispatch(key string, event edgekv.WatchEvent) {
 	serve.listener.Dispatch(key, event)
 }
 

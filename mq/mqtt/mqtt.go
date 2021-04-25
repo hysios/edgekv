@@ -147,7 +147,7 @@ func (mq *mqttMQ) FullTopic(_topic string) string {
 }
 
 func (mq *mqttMQ) Subscribe(topic string, fn func(msg edgekv.Message) error) error {
-	log.Infof("subscribe topic %s with qos mode %d", mq.FullTopic(topic), mq.Q)
+	log.Infof("subscribe topic '%s' with qos mode %d", mq.FullTopic(topic), mq.Q)
 	tok := mq.mqClient.Subscribe(mq.FullTopic(topic), mq.Q, func(_ mqtt.Client, rawmsg mqtt.Message) {
 		var (
 			msg edgekv.Message
@@ -186,7 +186,7 @@ func (mq *mqttMQ) connectHandler(client mqtt.Client) {
 }
 
 func (mq *mqttMQ) messagePubHandler(client mqtt.Client, msg mqtt.Message) {
-	log.Debugf("Received message: %s from topic: %s\n", msg.Payload(), msg.Topic())
+	log.Debugf("Received message: %s from topic: '%s'\n", msg.Payload(), msg.Topic())
 }
 
 func (mq *mqttMQ) connectLostHandler(client mqtt.Client, err error) {
@@ -197,5 +197,4 @@ func init() {
 	edgekv.RegisterQueue("mqtt", func(args ...string) (edgekv.MessageQueue, error) {
 		return OpenMqttMQ(args[0])
 	})
-	// gob.Register(new(edgekv.MessageChangelog))
 }

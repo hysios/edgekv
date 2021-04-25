@@ -9,6 +9,7 @@ require (
 	github.com/go-redis/redis v6.15.7+incompatible
 	github.com/go-redis/redis/v8 v8.8.2
 	github.com/go-stomp/stomp v2.1.4+incompatible // indirect
+	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/hysios/binary v0.0.0-20210423114437-89610a8c468d
 	github.com/hysios/log v0.0.0-20210420091742-d54e2f0555dd
 	github.com/hysios/mapindex v0.0.6
