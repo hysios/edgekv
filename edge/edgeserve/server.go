@@ -2,6 +2,7 @@ package edgeserve
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -99,61 +100,170 @@ func (serve *EdgeServer) Start() error {
 	return serve.listenUnix()
 }
 
-func (serve *EdgeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// func (serve *EdgeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// 	var (
+// 		key    = strings.TrimPrefix(r.URL.Path, "/")
+// 		q      = r.URL.Query()
+// 		method = r.Method
+// 		err    error
+// 	)
+
+// 	switch method {
+// 	case http.MethodGet: // Get
+// 		log.Debugf("GET: %s", key)
+// 		if len(q.Get("watch")) > 0 {
+// 			goto Watch
+// 		}
+// 		contentType := r.Header.Get("Content-Type")
+// 		log.Debugf("context type %s", contentType)
+// 		switch contentType {
+// 		case mime.TypeByExtension(".json"), "":
+// 			val, err := serve.getType(key, q)
+// 			if err != nil {
+// 				AbortErr(w, http.StatusNotFound, err)
+// 				return
+// 			}
+
+// 			log.Debugf("value type %T", val)
+// 			Jsonify(w, &Map{"data": val})
+// 		case mime.TypeByExtension(".gob"):
+// 		}
+// 	case http.MethodPost: // Set
+// 		var (
+// 			val = new(interface{})
+// 			old interface{}
+// 		)
+
+// 		if err = serve.decodeType(val, readBody(r.Body), q); err != nil {
+// 			AbortErr(w, http.StatusBadRequest, err)
+// 			return
+// 		}
+
+// 		log.Debugf("POST: %s with value %v", key, *val)
+// 		if old, err = serve.store.Set(key, *val); err != nil {
+// 			AbortErr(w, http.StatusInternalServerError, err)
+// 			return
+// 		}
+
+// 		if err = serve.Sync(old, *val, key); err != nil {
+// 			AbortErr(w, http.StatusInternalServerError, err)
+// 			return
+// 		}
+
+// 		Jsonify(w, nil)
+// 	}
+
+// 	return
+// Watch:
+// 	type change struct {
+// 		Key    string
+// 		Change interface{}
+// 	}
+// 	var chEvent = make(chan change)
+
+// 	serve.watch(key, func(key string, old, new interface{}) error {
+// 		log.Infof("change event key '%s' value => %v", key, new)
+// 		chEvent <- change{Key: key, Change: new}
+// 		return nil
+// 	})
+
+// 	w.Header().Set("Content-Type", "text/event-stream")
+// 	w.Header().Set("Cache-Control", "no-cache")
+// 	w.Header().Set("Connection", "keep-alive")
+// 	f, ok := w.(http.Flusher)
+// 	if ok {
+// 		f.Flush()
+// 	} else {
+// 		log.Infof("Damn, no flush")
+// 		return
+// 	}
+
+// 	for event := range chEvent {
+// 		log.Infof("event %v", event)
+// 		fmt.Fprintf(w, "change: %s\n\n", utils.Stringify(map[string]interface{}{"key": event.Key, "change": event.Change}))
+// 		f.Flush()
+// 	}
+// }
+
+// GetKey 取键值
+func (serve *EdgeServer) GetKey(w http.ResponseWriter, r *http.Request) {
 	var (
-		key    = strings.TrimPrefix(r.URL.Path, "/")
-		q      = r.URL.Query()
-		method = r.Method
-		err    error
+		vars    = mux.Vars(r)
+		key     = vars["key"]
+		encoder func(val interface{}, q url.Values) []byte
+		q       = r.URL.Query()
+		val     interface{}
+		ok      bool
 	)
 
-	switch method {
-	case http.MethodGet: // Get
-		log.Debugf("GET: %s", key)
-		if len(q.Get("watch")) > 0 {
-			goto Watch
-		}
-		contentType := r.Header.Get("Content-Type")
-		log.Debugf("context type %s", contentType)
-		switch contentType {
-		case mime.TypeByExtension(".json"), "":
-			val, err := serve.getType(key, q)
-			if err != nil {
-				AbortErr(w, http.StatusNotFound, err)
-				return
-			}
+	log.Debugf("GET: %s", key)
 
-			log.Debugf("value type %T", val)
-			Jsonify(w, &Map{"data": val})
-		case mime.TypeByExtension(".gob"):
-		}
-	case http.MethodPost: // Set
-		var (
-			val = new(interface{})
-			old interface{}
-		)
-
-		if err = serve.decodeType(val, readBody(r.Body), q); err != nil {
-			AbortErr(w, http.StatusBadRequest, err)
-			return
-		}
-
-		log.Debugf("POST: %s with value %v", key, *val)
-		if old, err = serve.store.Set(key, *val); err != nil {
-			AbortErr(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		if err = serve.Sync(old, *val, key); err != nil {
-			AbortErr(w, http.StatusInternalServerError, err)
-			return
-		}
-
-		Jsonify(w, nil)
+	contentType := r.Header.Get("Content-Type")
+	log.Debugf("context type %s", contentType)
+	switch contentType {
+	case mime.TypeByExtension(".json"), "":
+		encoder = serve.encodeJson
+	case edgekv.BinaryMimeType:
+		encoder = serve.encodeGob
 	}
 
-	return
-Watch:
+	if val, ok = serve.store.Get(key); !ok {
+		AbortErr(w, http.StatusNotFound, fmt.Errorf("not found key '%s'", key))
+		return
+	}
+	log.Infof("get value %#v", val)
+	b := encoder(edge.EdgeData{Status: "success", Data: val}, q)
+	w.WriteHeader(200)
+	w.Header().Set("Content-Type", contentType)
+	w.Write(b)
+}
+
+// SetKey 设置键值
+func (serve *EdgeServer) SetKey(w http.ResponseWriter, r *http.Request) {
+	var (
+		vars     = mux.Vars(r)
+		key      = vars["key"]
+		err      error
+		decoder  func([]byte, url.Values) interface{}
+		q        = r.URL.Query()
+		b        []byte
+		old, val interface{}
+	)
+
+	contentType := r.Header.Get("Content-Type")
+	log.Debugf("context type %s", contentType)
+	switch contentType {
+	case mime.TypeByExtension(".json"), "":
+		decoder = serve.decodeJson
+	case edgekv.BinaryMimeType:
+		decoder = serve.decodeGob
+	}
+
+	b, _ = ioutil.ReadAll(r.Body)
+
+	// 转码
+	val = decoder(b, q)
+
+	log.Debugf("POST: %s with value %v", key, val)
+	if old, err = serve.store.Set(key, val); err != nil {
+		AbortErr(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	if err = serve.Sync(old, val, key); err != nil {
+		AbortErr(w, http.StatusInternalServerError, err)
+		return
+	}
+
+	Jsonify(w, nil)
+}
+
+func (sever *EdgeServer) Watch(w http.ResponseWriter, r *http.Request) {
+	var (
+		vars = mux.Vars(r)
+		key  = vars["key"]
+	)
+
 	type change struct {
 		Key    string
 		Change interface{}
@@ -179,84 +289,10 @@ Watch:
 
 	for event := range chEvent {
 		log.Infof("event %v", event)
-		fmt.Fprintf(w, "change: %s\n\n", utils.Stringify(map[string]interface{}{"key": event.Key, "change": event.Change}))
+		b, _ := utils.Marshal(edge.EdgeEvent{Key: event.Key, Change: event.Change})
+		fmt.Fprintf(w, "change: %s\n\n", base64.StdEncoding.EncodeToString(b))
 		f.Flush()
 	}
-}
-
-// GetKey 取键值
-func (serve *EdgeServer) GetKey(w http.ResponseWriter, r *http.Request) {
-	var (
-		key     = strings.TrimPrefix(r.URL.Path, "/")
-		encoder func(val interface{}, q url.Values) []byte
-		q       = r.URL.Query()
-		val     interface{}
-		ok      bool
-	)
-
-	log.Debugf("GET: %s", key)
-
-	contentType := r.Header.Get("Content-Type")
-	log.Debugf("context type %s", contentType)
-	switch contentType {
-	case mime.TypeByExtension(".json"), "":
-		encoder = serve.encodeJson
-	case mime.TypeByExtension(".gob"):
-		encoder = serve.encodeGob
-	}
-
-	if val, ok = serve.store.Get(key); !ok {
-		AbortErr(w, http.StatusNotFound, fmt.Errorf("not found key '%s'", key))
-		return
-	}
-
-	b := encoder(val, q)
-	w.WriteHeader(200)
-	w.Header().Set("Content-Type", contentType)
-	w.Write(b)
-}
-
-// SetKey 设置键值
-func (serve *EdgeServer) SetKey(w http.ResponseWriter, r *http.Request) {
-	var (
-		key      = strings.TrimPrefix(r.URL.Path, "/")
-		err      error
-		decoder  func([]byte, url.Values) interface{}
-		q        = r.URL.Query()
-		b        []byte
-		old, val interface{}
-	)
-
-	contentType := r.Header.Get("Content-Type")
-	log.Debugf("context type %s", contentType)
-	switch contentType {
-	case mime.TypeByExtension(".json"), "":
-		decoder = serve.decodeJson
-	case mime.TypeByExtension(".gob"):
-		decoder = serve.decodeGob
-	}
-
-	b, _ = ioutil.ReadAll(r.Body)
-
-	// 转码
-	val = decoder(b, q)
-
-	log.Debugf("POST: %s with value %v", key, val)
-	if old, err = serve.store.Set(key, val); err != nil {
-		AbortErr(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	if err = serve.Sync(old, val, key); err != nil {
-		AbortErr(w, http.StatusInternalServerError, err)
-		return
-	}
-
-	Jsonify(w, nil)
-}
-
-func (sever *EdgeServer) Watch(w http.ResponseWriter, r *http.Request) {
-
 }
 
 func (serve *EdgeServer) decodeType(val interface{}, b []byte, q url.Values) error {
@@ -292,7 +328,7 @@ func (serve *EdgeServer) decodeType(val interface{}, b []byte, q url.Values) err
 }
 
 func (serve *EdgeServer) encodeJson(val interface{}, q url.Values) []byte {
-	return []byte(utils.Stringify(Map{"data": val}))
+	return []byte(utils.Stringify(val))
 }
 
 func (serve *EdgeServer) encodeGob(val interface{}, q url.Values) []byte {
@@ -308,18 +344,18 @@ func (serve *EdgeServer) decodeJson(b []byte, q url.Values) interface{} {
 	)
 
 	if len(typ) > 0 {
-		var val = new(interface{})
-		serve.decodeType(val, b, q)
-		return *val
+		var val interface{}
+		serve.decodeType(&val, b, q)
+		return val
 	}
 
 	return utils.JSON(string(b))
 }
 
 func (serve *EdgeServer) decodeGob(b []byte, q url.Values) interface{} {
-	var val = new(interface{})
-	if err := utils.Unmarshal(b, val); err == nil {
-		return *val
+	var val edge.EdgeData
+	if err := utils.Unmarshal(b, &val); err == nil {
+		return val.Data
 	}
 	return nil
 }
@@ -491,8 +527,4 @@ func SetStore(store edgekv.Store) {
 
 func SetMessageQueue(mq edgekv.MessageQueue) {
 	serve.SetMessageQueue(mq)
-}
-
-func init() {
-	mime.AddExtensionType(".gob", "application/gob")
 }

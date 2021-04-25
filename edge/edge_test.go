@@ -1,12 +1,9 @@
 package edge
 
 import (
-	"net/http"
-	"net/url"
-	"reflect"
 	"testing"
+	"time"
 
-	"github.com/hysios/edgekv"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -27,40 +24,25 @@ func TestEdgeStore_Get(t *testing.T) {
 	t.Logf("time %s", tt)
 }
 
-func TestEdgeStore_get(t *testing.T) {
-	type fields struct {
-		Accessor edgekv.Accessor
-		client   http.Client
-		q        url.Values
-	}
-	type args struct {
-		key string
-		q   url.Values
-	}
-	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    *http.Response
-		wantErr bool
-	}{
-		// TODO: Add test cases.
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			edge := &EdgeStore{
-				Accessor: tt.fields.Accessor,
-				client:   tt.fields.client,
-				q:        tt.fields.q,
-			}
-			got, err := edge.get(tt.args.key, tt.args.q)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("EdgeStore.get() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("EdgeStore.get() = %v, want %v", got, tt.want)
-			}
-		})
-	}
+func TestEdgeStore_Set(t *testing.T) {
+	store, err := Open()
+	assert.NoError(t, err)
+	assert.NotNil(t, store)
+	store.Set("test.on", false)
+
+	v := store.GetBool("test.on")
+	assert.False(t, v)
+	store.Set("test.updatedAt", time.Date(2020, 10, 4, 01, 02, 03, 04, time.UTC))
+	tt := store.GetTime("test.updatedAt")
+	assert.Equal(t, tt, time.Date(2020, 10, 4, 01, 02, 03, 04, time.UTC))
+	t.Logf("time %s", tt)
+}
+
+func TestEdgeStore_Watch(t *testing.T) {
+	store, err := Open()
+	assert.NoError(t, err)
+	assert.NotNil(t, store)
+	store.Watch("test.*", func(key string, old, new interface{}) error {
+		return nil
+	})
 }

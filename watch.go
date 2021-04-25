@@ -7,3 +7,5 @@ type WatchEvent struct {
 	Val  interface{}
 	Done func(bool)
 }
+
+const BinaryMimeType = "application/gob"

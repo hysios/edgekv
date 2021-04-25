@@ -20,7 +20,7 @@ func JSON(raw string) interface{} {
 	return *val
 }
 
-func Marshal(val interface{}) ([]byte, error) {
+func Marshal(val Any) ([]byte, error) {
 	var (
 		buf bytes.Buffer
 		enc = gob.NewEncoder(&buf)
@@ -33,7 +33,9 @@ func Marshal(val interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func Unmarshal(b []byte, val interface{}) error {
+type Any = interface{}
+
+func Unmarshal(b []byte, val Any) error {
 	var (
 		buf = bytes.NewBuffer(b)
 		dec = gob.NewDecoder(buf)
@@ -44,12 +46,11 @@ func Unmarshal(b []byte, val interface{}) error {
 
 func init() {
 	gob.Register(time.Time{})
-	gob.Register(make(map[string]interface{}))
+	gob.Register(map[string]interface{}{})
 	gob.Register(new(time.Duration))
 	gob.Register(new([]interface{}))
 	gob.Register(new(interface{}))
 	gob.Register(new(edgekv.MessageChangelog))
-	// gob.RegisterName("Message", new(edgekv.Message))
-	gob.RegisterName("*edgekv.Message", new(edgekv.Message))
-
+	gob.Register(new(edgekv.Message))
+	gob.Register(new(Any))
 }

@@ -1,15 +1,21 @@
 package edge
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/base64"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/hysios/edgekv"
+	"github.com/hysios/edgekv/utils"
+	"github.com/hysios/log"
 )
 
 var UnixSock = "/var/run/edgekv.sock"
@@ -53,120 +59,163 @@ type EdgeData struct {
 	Error  string      `json:"error,omitempty"`
 }
 
+type EdgeEvent struct {
+	Key    string
+	Change interface{}
+}
+
 func (edge *EdgeStore) Get(key string) (interface{}, bool) {
 	var (
-		q    = edge.getQuery()
-		path = edge.host(key)
-		data EdgeData
+		path                                      = edge.host(path.Join("key", key))
+		decoder func([]byte) (interface{}, error) = edge.decodeGob
+		val     interface{}
 	)
 
-	resp, err := edge.get(path, q)
+	resp, err := edge.get(path)
 	if err != nil {
 		return nil, false
 	}
 
-	var dec = json.NewDecoder(resp.Body)
-
-	if err = dec.Decode(&data); err != nil {
+	b := edge.readBody(resp)
+	if val, err = decoder(b); err != nil {
+		log.Infof("decoder error %s", err)
 		return nil, false
 	}
 
-	return data.Data, true
+	return val, true
 }
-
-func (edge *EdgeStore) getQuery() url.Values {
-	return edge.q
-}
-
-func (edge *EdgeStore) get(key string, q url.Values) (*http.Response, error) {
-	u, err := url.Parse(key)
-	if err != nil {
-		return nil, err
-	}
-	u.RawQuery = q.Encode()
-
-	return edge.client.Get(u.String())
-}
-
-// func (edge *EdgeStore) getValue(key string, q url.Values) (interface{}, error) {
-// 	var (
-// 		resp, err = edge.get(key, q)
-// 		dec       = json.NewDecoder(resp.Body)
-// 		val       = new(interface{})
-// 		typ       = q.Get("type")
-// 		ok        bool
-// 	)
-
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if err = dec.Decode(val); err != nil {
-// 		return nil, err
-// 	}
-
-// 	switch typ {
-// 	case "int":
-// 		v := edge.GetInt(key)
-// 		return v, nil
-// 	case "int32":
-// 		v := edge.GetInt32(key)
-// 		return v, nil
-// 	case "int64":
-// 		v := edge.GetInt64(key)
-// 		return v, nil
-// 	case "uint":
-// 		v := edge.GetUint(key)
-// 		return v, nil
-// 	case "uint32":
-// 		v := edge.GetUint32(key)
-// 		return v, nil
-// 	case "uint64":
-// 		v := edge.GetUint64(key)
-// 		return v, nil
-// 	case "bool":
-// 		v := edge.GetBool(key)
-// 		return v, nil
-// 	case "float":
-// 		v := edge.GetFloat64(key)
-// 		return v, nil
-// 	case "string":
-// 		v := edge.GetString(key)
-// 		return v, nil
-// 	case "duration":
-// 		v := edge.GetDuration(key)
-// 		return v, nil
-// 	case "time":
-// 		v := edge.GetTime(key)
-// 		return v, nil
-// 	case "[]int":
-// 		v := edge.GetIntSlice(key)
-// 		return v, nil
-// 	case "[]string":
-// 		v := edge.GetStringSlice(key)
-// 		return v, nil
-// 	case "map":
-// 		v := edge.GetStringMap(key)
-// 		return v, nil
-// 	default:
-// 		val, ok = edge.Get(key)
-// 		if !ok {
-// 			return nil, fmt.Errorf("not found key %s", key)
-// 		}
-// 		return
-// 	}
-
-// }
 
 func (edge *EdgeStore) Set(key string, val interface{}) {
-	// edge.client.Post()
-	panic("not implemented") // TODO: Implement
+	var (
+		path = edge.host(path.Join("key", key))
+		u    *url.URL
+		req  *http.Request
+		err  error
+	)
+	if u, err = url.Parse(path); err != nil {
+		log.Debugf("parse key '%s' error %s", path, err)
+		return
+	}
+
+	b := bytes.NewBuffer(edge.encodeGob(val))
+	if req, err = http.NewRequest(http.MethodPost, u.String(), b); err != nil {
+		log.Debugf("new req error %s", err)
+		return
+	}
+	req.Header.Add("Content-Type", edgekv.BinaryMimeType)
+	edge.client.Do(req)
 }
 
 func (edge *EdgeStore) Watch(prefix string, fn edgekv.ChangeFunc) {
-	panic("not implemented") // TODO: Implement
+	var (
+		path = edge.host(path.Join("watch", prefix))
+		u    *url.URL
+		req  *http.Request
+		err  error
+	)
+
+	if u, err = url.Parse(path); err != nil {
+		log.Debugf("parse key '%s' error %s", path, err)
+		return
+	}
+
+	if req, err = http.NewRequest(http.MethodGet, u.String(), nil); err != nil {
+		log.Debugf("new req error %s", err)
+		return
+	}
+
+	req.Header.Add("Content-Type", edgekv.BinaryMimeType)
+	resp, err := edge.client.Do(req)
+	if err != nil {
+		log.Debugf("req error %s", err)
+		return
+	}
+
+	s := NewFrameScanner(resp.Body)
+
+	for s.Scan() {
+		if event, err := s.DecodeFrame(s.Text()); err != nil {
+			log.Errorf("decodeFrame: decode error %s", err)
+			continue
+		} else {
+			fn(event.Key, nil, event.Change)
+		}
+	}
+}
+
+func (edge *EdgeStore) decodeFrame(frame string) (*EdgeEvent, error) {
+	var (
+		ss    = strings.Split(frame, "change:")
+		event = &EdgeEvent{}
+		b     []byte
+		err   error
+	)
+
+	raw := strings.TrimSpace(ss[1])
+	log.Infof("ss: %v", raw)
+	if b, err = base64.StdEncoding.DecodeString(raw); err != nil {
+		return nil, fmt.Errorf("edge: decoder base64 error %s", err)
+	}
+
+	if err = utils.Unmarshal(b, event); err != nil {
+		return nil, fmt.Errorf("edge: unmarshal error %s", err)
+	}
+
+	return event, nil
+}
+
+func (edge *EdgeStore) watchSplit(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	p := bytes.IndexAny(data, "\n\n")
+	if p > 0 {
+		return p, data[:p], nil
+	}
+
+	return 0, nil, nil
 }
 
 func (edge *EdgeStore) Bind(prefix string, fn edgekv.ReaderFunc) {
 	panic("not implemented") // TODO: Implement
+}
+
+func (edge *EdgeStore) readBody(resp *http.Response) []byte {
+	b, _ := ioutil.ReadAll(resp.Body)
+	return b
+}
+
+func (edge *EdgeStore) decodeJSON(b []byte) (interface{}, error) {
+	panic("nonimplement")
+}
+
+func (edge *EdgeStore) decodeGob(b []byte) (interface{}, error) {
+	var data EdgeData
+	if err := utils.Unmarshal(b, &data); err != nil {
+		return nil, err
+	} else {
+		return data.Data, nil
+	}
+}
+
+func (edge *EdgeStore) encodeGob(val interface{}) []byte {
+	var data = EdgeData{Status: "success", Data: val}
+	b, _ := utils.Marshal(data)
+	return b
+}
+
+func (edge *EdgeStore) get(key string) (*http.Response, error) {
+	var (
+		u   *url.URL
+		req *http.Request
+		err error
+	)
+
+	if u, err = url.Parse(key); err != nil {
+		return nil, err
+	}
+
+	if req, err = http.NewRequest(http.MethodGet, u.String(), nil); err != nil {
+		return nil, err
+	}
+	req.Header.Add("Content-Type", edgekv.BinaryMimeType)
+
+	return edge.client.Do(req)
 }

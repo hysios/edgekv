@@ -191,6 +191,7 @@ func (mq *mqttMQ) messagePubHandler(client mqtt.Client, msg mqtt.Message) {
 
 func (mq *mqttMQ) connectLostHandler(client mqtt.Client, err error) {
 	log.Debugf("Connect lost: %v", err)
+	time.Sleep(1 * time.Second)
 }
 
 func init() {

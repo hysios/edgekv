@@ -8,6 +8,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/hysios/edgekv"
 	"github.com/hysios/edgekv/center"
+	"github.com/hysios/edgekv/utils"
 	"github.com/hysios/log"
 	. "github.com/hysios/utils/response"
 
@@ -18,15 +19,15 @@ import (
 func main() {
 
 	store, err := center.OpenCenterStore("redis")
-	LogFatalf(err)
+	utils.LogFatalf(err)
 	mq, err := edgekv.OpenQueue("mqtt", "mqtt://127.0.0.1:1883/edgekv")
-	LogFatalf(err)
+	utils.LogFatalf(err)
 	defer mq.Close()
 
 	center.SetStore(store)
 	center.SetMessageQueue(mq)
 	edge, err := center.OpenEdge("OnlyTest")
-	LogFatalf(err)
+	utils.LogFatalf(err)
 
 	edge.Watch("test.*", func(key string, old, new interface{}) error {
 		log.Infof("watch %v", key)
@@ -54,7 +55,7 @@ func main() {
 
 	log.Infof("start Edgekv Center server ")
 	go func() {
-		LogFatalf(center.StartServer())
+		utils.LogFatalf(center.StartServer())
 	}()
 
 	log.Fatal(http.ListenAndServe(":9097", r))
@@ -101,12 +102,7 @@ func SetKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	edge.Set(key, *val)
-	log.Infof("set '%s' value => %v", key, val)
+	log.Infof("set '%s' value => %v", key, *val)
 
 	Jsonify(w, nil)
-}
-func LogFatalf(err error) {
-	if err != nil {
-		log.Fatal(err)
-	}
 }
