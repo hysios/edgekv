@@ -22,7 +22,11 @@ func main() {
 	utils.LogFatalf(err)
 	mq, err := edgekv.OpenQueue("mqtt", "mqtt://127.0.0.1:1883/edgekv")
 	utils.LogFatalf(err)
-	defer mq.Close()
+
+	defer func() {
+		mq.Close()
+		center.Stop()
+	}()
 
 	center.SetStore(store)
 	center.SetMessageQueue(mq)
@@ -47,11 +51,6 @@ func main() {
 	r.Path("/{edgeID}/{key}").
 		Methods("POST").
 		HandlerFunc(SetKey)
-
-	// Only matches if domain is "www.example.com".
-	// http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-
-	// })
 
 	log.Infof("start Edgekv Center server ")
 	go func() {

@@ -8,14 +8,23 @@ import (
 type (
 	ChangeFunc     func(key string, old, new interface{}) error
 	EdgeChangeFunc func(key string, edgeID EdgeID, old, new interface{}) error
-	ReaderFunc     func(key string) (interface{}, bool)
+	BindHandler    func(method BindMethod, key string, val interface{}) (interface{}, bool)
+)
+
+type BindMethod string
+
+const (
+	BindGet    BindMethod = "Read"
+	BindSet    BindMethod = "Write"
+	BindDelete BindMethod = "Delete"
 )
 
 type Database interface {
 	Get(key string) (val interface{}, ok bool)
 	Set(key string, val interface{})
-	Watch(prefix string, fn ChangeFunc)
-	Bind(prefix string, fn ReaderFunc)
+	Watch(pattern string, fn ChangeFunc)
+	// Unwatch(int)
+	Bind(key string, fn BindHandler) error
 	Accessor
 }
 

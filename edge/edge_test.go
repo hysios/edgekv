@@ -42,7 +42,7 @@ func TestEdgeStore_Watch(t *testing.T) {
 	store, err := Open()
 	assert.NoError(t, err)
 	assert.NotNil(t, store)
-	store.Watch("test.*", func(key string, old, new interface{}) error {
+	go store.Watch("test.*", func(key string, old, new interface{}) error {
 		return nil
 	})
 }

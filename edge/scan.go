@@ -43,7 +43,23 @@ func (scanner *FrameScanner) Split(data []byte, atEOF bool) (advance int, token 
 	return 0, nil, nil
 }
 
-func (scanner *FrameScanner) DecodeFrame(frame string) (*EdgeEvent, error) {
+func (scanner *FrameScanner) DecodeFrame() <-chan EdgeEvent {
+	var ch = make(chan EdgeEvent)
+
+	go func() {
+		for scanner.Scan() {
+			if event, err := scanner.decodeFrame(scanner.Text()); err != nil {
+				log.Errorf("decodeFrame: decode error %s", err)
+				continue
+			} else {
+				ch <- *event
+			}
+		}
+	}()
+	return ch
+}
+
+func (scanner *FrameScanner) decodeFrame(frame string) (*EdgeEvent, error) {
 	var (
 		ss    = strings.Split(frame, "change:")
 		event = &EdgeEvent{}

@@ -88,11 +88,11 @@ func (center *CenterDatabase) Sync(old, val interface{}, key string) error {
 	})
 }
 
-func (center *CenterDatabase) Watch(prefix string, fn edgekv.ChangeFunc) {
-	center.master.watch(center.Fullkey(prefix), fn)
+func (center *CenterDatabase) Watch(pattern string, fn edgekv.ChangeFunc) {
+	center.master.watch(center.Fullkey(pattern), fn)
 }
 
-func (center *CenterDatabase) Bind(prefix string, fn edgekv.ReaderFunc) {
+func (center *CenterDatabase) Bind(key string, fn edgekv.BindHandler) error {
 	panic("not implemented") // TODO: Implement
 }
 

@@ -14,6 +14,7 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gorilla/mux"
@@ -31,9 +32,10 @@ type EdgeServer struct {
 	http.Server
 	ID edgekv.EdgeID
 
-	store    edgekv.Store
-	mq       edgekv.MessageQueue
-	listener edgekv.Listener
+	store        edgekv.Store
+	mq           edgekv.MessageQueue
+	listener     edgekv.Listener
+	bindSessions sync.Map
 }
 
 var serve = EdgeServer{}
@@ -47,7 +49,11 @@ func (serve *EdgeServer) Start() error {
 	r := mux.NewRouter()
 	r.HandleFunc("/key/{key}", serve.GetKey).Methods(http.MethodGet)
 	r.HandleFunc("/key/{key}", serve.SetKey).Methods(http.MethodPost)
-	r.HandleFunc("/watch/{key}", serve.Watch).Methods(http.MethodGet)
+	r.HandleFunc("/watch/{pattern}", serve.Watch).Methods(http.MethodGet)
+	r.HandleFunc("/bind_observer/{key}", serve.BindObserver).Methods(http.MethodGet)
+	r.HandleFunc("/bind/{sessID}", serve.BindRead).Methods(http.MethodGet)
+	r.HandleFunc("/bind/{sessID}", serve.BindWrite).Methods(http.MethodPut)
+
 	serve.Handler = r
 
 	if serve.mq == nil || serve.store == nil {
@@ -100,91 +106,6 @@ func (serve *EdgeServer) Start() error {
 	return serve.listenUnix()
 }
 
-// func (serve *EdgeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-// 	var (
-// 		key    = strings.TrimPrefix(r.URL.Path, "/")
-// 		q      = r.URL.Query()
-// 		method = r.Method
-// 		err    error
-// 	)
-
-// 	switch method {
-// 	case http.MethodGet: // Get
-// 		log.Debugf("GET: %s", key)
-// 		if len(q.Get("watch")) > 0 {
-// 			goto Watch
-// 		}
-// 		contentType := r.Header.Get("Content-Type")
-// 		log.Debugf("context type %s", contentType)
-// 		switch contentType {
-// 		case mime.TypeByExtension(".json"), "":
-// 			val, err := serve.getType(key, q)
-// 			if err != nil {
-// 				AbortErr(w, http.StatusNotFound, err)
-// 				return
-// 			}
-
-// 			log.Debugf("value type %T", val)
-// 			Jsonify(w, &Map{"data": val})
-// 		case mime.TypeByExtension(".gob"):
-// 		}
-// 	case http.MethodPost: // Set
-// 		var (
-// 			val = new(interface{})
-// 			old interface{}
-// 		)
-
-// 		if err = serve.decodeType(val, readBody(r.Body), q); err != nil {
-// 			AbortErr(w, http.StatusBadRequest, err)
-// 			return
-// 		}
-
-// 		log.Debugf("POST: %s with value %v", key, *val)
-// 		if old, err = serve.store.Set(key, *val); err != nil {
-// 			AbortErr(w, http.StatusInternalServerError, err)
-// 			return
-// 		}
-
-// 		if err = serve.Sync(old, *val, key); err != nil {
-// 			AbortErr(w, http.StatusInternalServerError, err)
-// 			return
-// 		}
-
-// 		Jsonify(w, nil)
-// 	}
-
-// 	return
-// Watch:
-// 	type change struct {
-// 		Key    string
-// 		Change interface{}
-// 	}
-// 	var chEvent = make(chan change)
-
-// 	serve.watch(key, func(key string, old, new interface{}) error {
-// 		log.Infof("change event key '%s' value => %v", key, new)
-// 		chEvent <- change{Key: key, Change: new}
-// 		return nil
-// 	})
-
-// 	w.Header().Set("Content-Type", "text/event-stream")
-// 	w.Header().Set("Cache-Control", "no-cache")
-// 	w.Header().Set("Connection", "keep-alive")
-// 	f, ok := w.(http.Flusher)
-// 	if ok {
-// 		f.Flush()
-// 	} else {
-// 		log.Infof("Damn, no flush")
-// 		return
-// 	}
-
-// 	for event := range chEvent {
-// 		log.Infof("event %v", event)
-// 		fmt.Fprintf(w, "change: %s\n\n", utils.Stringify(map[string]interface{}{"key": event.Key, "change": event.Change}))
-// 		f.Flush()
-// 	}
-// }
-
 // GetKey 取键值
 func (serve *EdgeServer) GetKey(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -211,7 +132,7 @@ func (serve *EdgeServer) GetKey(w http.ResponseWriter, r *http.Request) {
 		AbortErr(w, http.StatusNotFound, fmt.Errorf("not found key '%s'", key))
 		return
 	}
-	log.Infof("get value %#v", val)
+
 	b := encoder(edge.EdgeData{Status: "success", Data: val}, q)
 	w.WriteHeader(200)
 	w.Header().Set("Content-Type", contentType)
@@ -258,10 +179,11 @@ func (serve *EdgeServer) SetKey(w http.ResponseWriter, r *http.Request) {
 	Jsonify(w, nil)
 }
 
+// Watch 监听变化的键
 func (sever *EdgeServer) Watch(w http.ResponseWriter, r *http.Request) {
 	var (
-		vars = mux.Vars(r)
-		key  = vars["key"]
+		vars    = mux.Vars(r)
+		pattern = vars["pattern"]
 	)
 
 	type change struct {
@@ -270,7 +192,7 @@ func (sever *EdgeServer) Watch(w http.ResponseWriter, r *http.Request) {
 	}
 	var chEvent = make(chan change)
 
-	serve.watch(key, func(key string, old, new interface{}) error {
+	serve.watch(pattern, func(key string, old, new interface{}) error {
 		log.Infof("change event key '%s' value => %v", key, new)
 		chEvent <- change{Key: key, Change: new}
 		return nil
@@ -293,6 +215,74 @@ func (sever *EdgeServer) Watch(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "change: %s\n\n", base64.StdEncoding.EncodeToString(b))
 		f.Flush()
 	}
+}
+
+// BindObserver 的监听服务
+func (sever *EdgeServer) BindObserver(w http.ResponseWriter, r *http.Request) {
+}
+
+func (sever *EdgeServer) BindRead(w http.ResponseWriter, r *http.Request) {
+}
+
+func (sever *EdgeServer) BindWrite(w http.ResponseWriter, r *http.Request) {
+}
+
+// Stop 停止服务
+func (serve *EdgeServer) Stop() error {
+	var ctx = context.Background()
+
+	return serve.Shutdown(ctx)
+}
+
+func (serve *EdgeServer) SetEdgeID(id edgekv.EdgeID) {
+	serve.ID = id
+}
+
+func (serve *EdgeServer) SetStore(store edgekv.Store) {
+	serve.store = store
+}
+
+func (serve *EdgeServer) SetMessageQueue(mq edgekv.MessageQueue) {
+	serve.mq = mq
+}
+
+func (serve *EdgeServer) Sync(old, val interface{}, key string) error {
+	var (
+		changes diff.Changelog
+		err     error
+	)
+	switch x := old.(type) {
+	case map[string]interface{}:
+		if changes, err = diff.Diff(x, val); err != nil {
+			changes = diff.Changelog{{
+				Type: diff.DELETE, Path: []string{key},
+			}, {
+				Type: diff.CREATE, Path: []string{key}, To: val,
+			}}
+		}
+	default:
+		if reflect.DeepEqual(old, val) {
+			return nil
+		}
+		if old == nil {
+			changes = diff.Changelog{{Type: diff.CREATE, To: val}}
+		} else {
+			changes = diff.Changelog{{Type: diff.UPDATE, From: x, To: val}}
+		}
+	}
+
+	if len(changes) == 0 {
+		return nil
+	}
+
+	return serve.mq.Publish("sync", edgekv.Message{
+		From: string(serve.ID),
+		Type: edgekv.CmdChangelog,
+		Payload: edgekv.MessageChangelog{
+			Key:     key,
+			Changes: changes,
+		},
+	})
 }
 
 func (serve *EdgeServer) decodeType(val interface{}, b []byte, q url.Values) error {
@@ -360,64 +350,6 @@ func (serve *EdgeServer) decodeGob(b []byte, q url.Values) interface{} {
 	return nil
 }
 
-func (serve *EdgeServer) getType(key string, q url.Values) (val interface{}, err error) {
-	var (
-		typ = q.Get("type")
-		ok  bool
-	)
-
-	switch typ {
-	case "int":
-		v := serve.store.GetInt(key)
-		return v, nil
-	case "int32":
-		v := serve.store.GetInt32(key)
-		return v, nil
-	case "int64":
-		v := serve.store.GetInt64(key)
-		return v, nil
-	case "uint":
-		v := serve.store.GetUint(key)
-		return v, nil
-	case "uint32":
-		v := serve.store.GetUint32(key)
-		return v, nil
-	case "uint64":
-		v := serve.store.GetUint64(key)
-		return v, nil
-	case "bool":
-		v := serve.store.GetBool(key)
-		return v, nil
-	case "float":
-		v := serve.store.GetFloat64(key)
-		return v, nil
-	case "string":
-		v := serve.store.GetString(key)
-		return v, nil
-	case "duration":
-		v := serve.store.GetDuration(key)
-		return v, nil
-	case "time":
-		v := serve.store.GetTime(key)
-		return v, nil
-	case "[]int":
-		v := serve.store.GetIntSlice(key)
-		return v, nil
-	case "[]string":
-		v := serve.store.GetStringSlice(key)
-		return v, nil
-	case "map":
-		v := serve.store.GetStringMap(key)
-		return v, nil
-	default:
-		val, ok = serve.store.Get(key)
-		if !ok {
-			return nil, fmt.Errorf("not found key %s", key)
-		}
-		return
-	}
-}
-
 func (serve *EdgeServer) listenUnix() error {
 	os.Remove(edge.UnixSock)
 
@@ -447,68 +379,12 @@ func (serve *EdgeServer) dispatch(key string, event edgekv.WatchEvent) {
 	serve.listener.Dispatch(key, event)
 }
 
-// Stop 停止服务
-func (serve *EdgeServer) Stop() error {
-	var ctx = context.Background()
-
-	return serve.Shutdown(ctx)
-}
-
-func (serve *EdgeServer) SetEdgeID(id edgekv.EdgeID) {
-	serve.ID = id
-}
-
-func (serve *EdgeServer) SetStore(store edgekv.Store) {
-	serve.store = store
-}
-
-func (serve *EdgeServer) SetMessageQueue(mq edgekv.MessageQueue) {
-	serve.mq = mq
-}
-
-func (serve *EdgeServer) Sync(old, val interface{}, key string) error {
-	var (
-		changes diff.Changelog
-		err     error
-	)
-	switch x := old.(type) {
-	case map[string]interface{}:
-		if changes, err = diff.Diff(x, val); err != nil {
-			changes = diff.Changelog{{
-				Type: diff.DELETE, Path: []string{key},
-			}, {
-				Type: diff.CREATE, Path: []string{key}, To: val,
-			}}
-		}
-	default:
-		if reflect.DeepEqual(old, val) {
-			return nil
-		}
-		if old == nil {
-			changes = diff.Changelog{{Type: diff.CREATE, To: val}}
-		} else {
-			changes = diff.Changelog{{Type: diff.UPDATE, From: x, To: val}}
-		}
-	}
-
-	if len(changes) == 0 {
-		return nil
-	}
-
-	return serve.mq.Publish("sync", edgekv.Message{
-		From: string(serve.ID),
-		Type: edgekv.CmdChangelog,
-		Payload: edgekv.MessageChangelog{
-			Key:     key,
-			Changes: changes,
-		},
-	})
-}
-
-// func (serve *EdgeServer) Topic()
-
 func Start() error {
 	return serve.Start()
+}
+
+func Stop() error {
+	return serve.Stop()
 }
 
 func StartUnix(filename string) error {

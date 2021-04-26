@@ -179,7 +179,7 @@ func (store *RedisStore) WatchEdges(prefix string, fn edgekv.EdgeChangeFunc) {
 	panic("not implemented") // TODO: Implement
 }
 
-func (store *RedisStore) Bind(prefix string, fn edgekv.ReaderFunc) {
+func (store *RedisStore) Bind(prefix string, fn edgekv.BindHandler) error {
 	panic("not implemented") // TODO: Implement
 }
 

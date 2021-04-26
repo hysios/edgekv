@@ -34,6 +34,7 @@ func main() {
 		log.Infof("watch key '%s' chagne => '%v'", key, new)
 		return nil
 	})
+
 	ch := make(chan bool)
 	<-ch
 }

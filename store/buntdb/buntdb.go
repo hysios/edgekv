@@ -98,7 +98,7 @@ func (store *buntdbStore) Watch(prefix string, fn edgekv.ChangeFunc) {
 	panic("not implemented") // TODO: Implement
 }
 
-func (store *buntdbStore) Bind(prefix string, fn edgekv.ReaderFunc) {
+func (store *buntdbStore) Bind(prefix string, fn edgekv.BindHandler) error {
 	panic("not implemented") // TODO: Implement
 }
 

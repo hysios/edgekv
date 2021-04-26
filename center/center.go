@@ -2,7 +2,6 @@ package center
 
 import (
 	"errors"
-	"time"
 
 	"github.com/hysios/edgekv"
 	"github.com/hysios/edgekv/store/redis"
@@ -16,6 +15,7 @@ type CenterServer struct {
 	store    edgekv.CenterStore
 	mq       edgekv.MessageQueue
 	listener edgekv.Listener
+	done     chan struct{}
 }
 
 var server = &CenterServer{}
@@ -24,12 +24,21 @@ func StartServer() error {
 	return server.Start()
 }
 
+func Stop() error {
+	return server.Stop()
+}
+
 func OpenEdge(edgeID edgekv.EdgeID) (edgekv.Database, error) {
 	return server.OpenEdge(edgeID), nil
 }
 
+func (serve *CenterServer) init() {
+	serve.done = make(chan struct{})
+}
+
 func (serve *CenterServer) Start() error {
 	var err error
+	serve.init()
 
 	if serve.store == nil || serve.mq == nil {
 		return errors.New("don't open store or message queue")
@@ -78,14 +87,12 @@ func (serve *CenterServer) Start() error {
 		return err
 	}
 
-	for {
-		time.Sleep(1 * time.Second)
-	}
-
+	<-serve.done
 	return nil
 }
 
 func (serve *CenterServer) Stop() error {
+	serve.done <- struct{}{}
 	return serve.listener.Close()
 }
 

@@ -47,7 +47,7 @@ func (m *memStore) Watch(prefix string, fn edgekv.ChangeFunc) {
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *memStore) Bind(prefix string, fn edgekv.ReaderFunc) {
+func (m *memStore) Bind(prefix string, fn edgekv.BindHandler) error {
 	panic("not implemented") // TODO: Implement
 }
 

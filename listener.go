@@ -23,6 +23,7 @@ func (key *KeyMatch) Match(_ context.Context, input string) bool {
 
 type SubscribeFunc func(key string, payload interface{})
 type Subscribe struct {
+	ID       int
 	Matcher  Matcher
 	Callback SubscribeFunc
 }
@@ -38,6 +39,7 @@ type Listener struct {
 	run        atomic.Bool
 	dispatchCh chan DispatchEvent
 	subLock    sync.RWMutex
+	lastID     int
 }
 
 func NewListner() *Listener {
@@ -86,6 +88,10 @@ func (listen *Listener) Start() error {
 
 func (listen *Listener) Close() error {
 	listen.run.Store(false)
+	listen.subLock.Lock()
+	listen.subscribes = nil
+	listen.subLock.Unlock()
+
 	close(listen.dispatchCh)
 	return nil
 }
@@ -97,13 +103,41 @@ func (listen *Listener) Dispatch(key string, payload interface{}) {
 	listen.dispatchCh <- DispatchEvent{Key: key, Payload: payload}
 }
 
-func (listen *Listener) Watch(prefix string, fn SubscribeFunc) {
+func (listen *Listener) Watch(pattern string, fn SubscribeFunc) int {
+	listen.subLock.Lock()
+	defer listen.subLock.Unlock()
+	listen.lastID++
+	listen.subscribes = append(listen.subscribes,
+		listen.newSubscribe(listen.lastID, pattern, fn))
+	return listen.lastID
+}
+
+func (listen *Listener) newSubscribe(id int, pattern string, fn SubscribeFunc) Subscribe {
+	return Subscribe{
+		ID:       id,
+		Matcher:  &KeyMatch{Pattern: pattern},
+		Callback: fn,
+	}
+}
+
+func (listen *Listener) Unwatch(subID int) {
 	listen.subLock.Lock()
 	defer listen.subLock.Unlock()
 
-	listen.subscribes = append(listen.subscribes, Subscribe{Matcher: &KeyMatch{Pattern: prefix}, Callback: fn})
-}
+	var (
+		i = 0
+		l = len(listen.subscribes)
+		c int
+	)
 
-func (listen *Listener) Unwatch(prefix string, fn SubscribeFunc) {
+	for _, sub := range listen.subscribes {
+		if sub.ID == subID {
+			c++
+			continue
+		}
+		i++
+		listen.subscribes[i] = sub
+	}
 
+	listen.subscribes = listen.subscribes[:l-c]
 }

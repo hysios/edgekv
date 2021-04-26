@@ -60,8 +60,10 @@ type EdgeData struct {
 }
 
 type EdgeEvent struct {
-	Key    string
-	Change interface{}
+	Method    string
+	SessionID string
+	Key       string
+	Change    interface{}
 }
 
 func (edge *EdgeStore) Get(key string) (interface{}, bool) {
@@ -132,14 +134,61 @@ func (edge *EdgeStore) Watch(prefix string, fn edgekv.ChangeFunc) {
 	}
 
 	s := NewFrameScanner(resp.Body)
+	for event := range s.DecodeFrame() {
+		fn(event.Key, nil, event.Change)
+	}
+}
 
-	for s.Scan() {
-		if event, err := s.DecodeFrame(s.Text()); err != nil {
-			log.Errorf("decodeFrame: decode error %s", err)
-			continue
-		} else {
-			fn(event.Key, nil, event.Change)
+func (edge *EdgeStore) Bind(key string, fn edgekv.BindHandler) error {
+	var (
+		req  *http.Request
+		resp *http.Response
+		err  error
+		path = edge.parseKey(path.Join("bind_observer", key))
+	)
+
+	if req, err = http.NewRequest(http.MethodGet, path, nil); err != nil {
+		return fmt.Errorf("new req error %w", err)
+	}
+
+	req.Header.Add("Content-Type", edgekv.BinaryMimeType)
+	if resp, err = edge.client.Do(req); err != nil {
+		return fmt.Errorf("req error %s", err)
+	}
+
+	s := NewFrameScanner(resp.Body)
+	for event := range s.DecodeFrame() {
+		meth := edgekv.BindMethod(event.Method)
+		switch meth {
+		case edgekv.BindGet:
+			readVal, ok := fn(meth, key, nil)
+			edge.upstreamSync(event.SessionID, readVal, ok)
+		case edgekv.BindSet:
+			fn(meth, key, event.Change)
+		case edgekv.BindDelete:
+			// TODO: Bind Delete
 		}
+	}
+	return nil
+}
+
+func (edge *EdgeStore) upstreamSync(sessID string, val interface{}, ok bool) {
+	var (
+		req  *http.Request
+		err  error
+		path = edge.parseKey(path.Join("bind", sessID))
+	)
+
+	b := edge.encodeGob(val)
+	if req, err = http.NewRequest(http.MethodPut, path, bytes.NewBuffer(b)); err != nil {
+		log.Debugf("new req error %s", err)
+		return
+	}
+
+	req.Header.Add("Content-Type", edgekv.BinaryMimeType)
+	if _, err = edge.client.Do(req); err != nil {
+		log.Debugf("req error %s", err)
+		return
 	}
 }
 
@@ -164,6 +213,21 @@ func (edge *EdgeStore) decodeFrame(frame string) (*EdgeEvent, error) {
 	return event, nil
 }
 
+func (edge *EdgeStore) parseKey(key string) string {
+	var (
+		path = edge.host(key)
+		u    *url.URL
+		err  error
+	)
+
+	if u, err = url.Parse(path); err != nil {
+		log.Debugf("parse key '%s' error %s", path, err)
+		return ""
+	}
+
+	return u.String()
+}
+
 func (edge *EdgeStore) watchSplit(data []byte, atEOF bool) (advance int, token []byte, err error) {
 	p := bytes.IndexAny(data, "\n\n")
 	if p > 0 {
@@ -171,10 +235,6 @@ func (edge *EdgeStore) watchSplit(data []byte, atEOF bool) (advance int, token [
 	}
 
 	return 0, nil, nil
-}
-
-func (edge *EdgeStore) Bind(prefix string, fn edgekv.ReaderFunc) {
-	panic("not implemented") // TODO: Implement
 }
 
 func (edge *EdgeStore) readBody(resp *http.Response) []byte {
