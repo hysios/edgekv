@@ -47,46 +47,14 @@ func (serve *CenterServer) Start() error {
 	go serve.listener.Start()
 
 	// 订阅中心同步频道
-	if err = serve.mq.Subscribe("sync", func(msg edgekv.Message) error {
-		switch msg.Type {
-		case edgekv.CmdChangelog:
-			var (
-				cmdMsg   = msg.Payload.(*edgekv.MessageChangelog)
-				val      interface{}
-				ok       bool
-				edgeId   = edgekv.EdgeID(msg.From)
-				doChange diff.Change
-			)
-			doChange = serve.lastChange(cmdMsg.Changes)
-
-			fullkey := serve.store.EdgeKey(edgeId, cmdMsg.Key)
-			if val, ok = serve.store.Get(fullkey); ok {
-				diff.Patch(cmdMsg.Changes, &val)
-				log.Infof("new val %v", val)
-			} else {
-				val = doChange.To
-			}
-
-			log.Debugf("store => %s Do [%s] change from %v to %v", fullkey, doChange.Type, doChange.From, doChange.To)
-			serve.store.Set(fullkey, val)
-			var event = edgekv.WatchEvent{
-				Key:  cmdMsg.Key,
-				From: edgekv.EdgeID(msg.From),
-				Old:  val,
-				Val:  doChange.To,
-				Done: func(ok bool) {
-					if ok {
-					}
-				},
-			}
-
-			serve.dispatch(fullkey, event)
-		}
-		return nil
-	}); err != nil {
+	if err = serve.mq.Subscribe("sync", serve.syncProcess); err != nil {
 		return err
 	}
 
+	// 订阅Binder频道
+	if err = serve.mq.Subscribe("binder", serve.binderProcess); err != nil {
+		return err
+	}
 	<-serve.done
 	return nil
 }
@@ -129,6 +97,62 @@ func (serve *CenterServer) watch(prefix string, fn edgekv.ChangeFunc) {
 
 func (serve *CenterServer) dispatch(key string, event edgekv.WatchEvent) {
 	serve.listener.Dispatch(key, event)
+}
+
+func (serve *CenterServer) syncProcess(msg edgekv.Message) error {
+	switch msg.Type {
+	case edgekv.CmdChangelog:
+		var (
+			cmdMsg   = msg.Payload.(*edgekv.MessageChangelog)
+			val      interface{}
+			ok       bool
+			edgeId   = edgekv.EdgeID(msg.From)
+			doChange diff.Change
+		)
+		doChange = serve.lastChange(cmdMsg.Changes)
+
+		fullkey := serve.store.EdgeKey(edgeId, cmdMsg.Key)
+		if val, ok = serve.store.Get(fullkey); ok {
+			diff.Patch(cmdMsg.Changes, &val)
+			log.Infof("new val %v", val)
+		} else {
+			val = doChange.To
+		}
+
+		log.Debugf("store => %s Do [%s] change from %v to %v", fullkey, doChange.Type, doChange.From, doChange.To)
+		serve.store.Set(fullkey, val)
+		var event = edgekv.WatchEvent{
+			Key:  cmdMsg.Key,
+			From: edgekv.EdgeID(msg.From),
+			Old:  val,
+			Val:  doChange.To,
+			Done: func(ok bool) {
+				if ok {
+				}
+			},
+		}
+
+		serve.dispatch(fullkey, event)
+	}
+	return nil
+}
+
+func (serve *CenterServer) binderProcess(msg edgekv.Message) error {
+	switch msg.Type {
+	case edgekv.CmdDeclareBinder:
+		var (
+			cmdMsg = msg.Payload.(*edgekv.MessageDeclareBinder)
+			edgeId = edgekv.EdgeID(msg.From)
+		)
+
+		if !edgeId.IsNil() {
+			_ = cmdMsg
+			// serve.RegisterBinder(edgeId, cmdMsg.Pattern)
+		}
+
+		// serve.dispatch(fullkey, event)
+	}
+	return nil
 }
 
 func SetStore(store edgekv.CenterStore) {

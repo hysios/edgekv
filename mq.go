@@ -14,7 +14,12 @@ var (
 type Command string
 
 const (
-	CmdChangelog Command = "changelog"
+	CmdChangelog     Command = "changelog"
+	CmdDeclareBinder Command = "declarebinder"
+	CmdGetBind       Command = "get_bind"
+	CmdSetBind       Command = "set_bind"
+	CmdRetBind       Command = "ret_bind"
+	CmdDeleteBind    Command = "delete_bind"
 )
 
 type Message struct {
@@ -26,6 +31,31 @@ type Message struct {
 type MessageChangelog struct {
 	Key     string
 	Changes diff.Changelog
+}
+
+type MessageDeclareBinder struct {
+	Pattern string
+}
+
+type MessageGetBind struct {
+	Key       string
+	SessionID string
+}
+
+type MessageRetBind struct {
+	Key       string
+	SessionID string
+	Value     interface{}
+	Found     bool
+}
+
+type MessageSetBind struct {
+	Key   string
+	Value interface{}
+}
+
+type MessageDeleteBind struct {
+	Key string
 }
 
 type MessageQueue interface {
@@ -57,6 +87,14 @@ func (msg *Message) Build() bool {
 	switch msg.Type {
 	case CmdChangelog:
 		msg.Payload = MessageChangelog{}
+	case CmdDeclareBinder:
+		msg.Payload = MessageDeclareBinder{}
+	case CmdGetBind:
+		msg.Payload = MessageGetBind{}
+	case CmdSetBind:
+		msg.Payload = MessageSetBind{}
+	case CmdDeleteBind:
+		msg.Payload = MessageDeleteBind{}
 	default:
 		return false
 	}

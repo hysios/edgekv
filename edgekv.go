@@ -43,6 +43,10 @@ func (id EdgeID) SubTopic(name string) string {
 	return path.Join(id.Topic(), name)
 }
 
+func (id EdgeID) IsNil() bool {
+	return len(id) == 0
+}
+
 func init() {
 	topicTpl = template.Must(template.New("edgekv").Parse(TopicPattern))
 }

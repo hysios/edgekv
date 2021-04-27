@@ -22,16 +22,24 @@ func (serve *CenterServer) OpenEdge(edgeID edgekv.EdgeID) edgekv.Database {
 		master: serve,
 	}
 
-	database.Accessor = edgekv.MakeAccessor(database)
+	database.Accessor = edgekv.MakeAccessor(&CenterWrap{database})
 
 	return database
 }
 
-func (center *CenterDatabase) Get(key string) (val interface{}, ok bool) {
+type CenterWrap struct {
+	*CenterDatabase
+}
+
+func (wrap *CenterWrap) Get(key string) (val interface{}, ok bool) {
+	return wrap.CenterDatabase.Get(key)
+}
+
+func (center *CenterDatabase) Get(key string, opts ...edgekv.GetOpt) (val interface{}, ok bool) {
 	return center.store.Get(key)
 }
 
-func (center *CenterDatabase) Set(key string, val interface{}) {
+func (center *CenterDatabase) Set(key string, val interface{}, opts ...edgekv.SetOpt) {
 	var (
 		old interface{}
 		err error

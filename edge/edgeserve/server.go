@@ -52,7 +52,7 @@ func (serve *EdgeServer) Start() error {
 	r.HandleFunc("/watch/{pattern}", serve.Watch).Methods(http.MethodGet)
 	r.HandleFunc("/bind_observer/{key}", serve.BindObserver).Methods(http.MethodGet)
 	r.HandleFunc("/bind/{sessID}", serve.BindRead).Methods(http.MethodGet)
-	r.HandleFunc("/bind/{sessID}", serve.BindWrite).Methods(http.MethodPut)
+	r.HandleFunc("/bind/{sessID}", serve.BindReceive).Methods(http.MethodPut)
 
 	serve.Handler = r
 
@@ -121,11 +121,11 @@ func (serve *EdgeServer) GetKey(w http.ResponseWriter, r *http.Request) {
 
 	contentType := r.Header.Get("Content-Type")
 	log.Debugf("context type %s", contentType)
+	encoder = serve.encodeGob
 	switch contentType {
 	case mime.TypeByExtension(".json"), "":
 		encoder = serve.encodeJson
 	case edgekv.BinaryMimeType:
-		encoder = serve.encodeGob
 	}
 
 	if val, ok = serve.store.Get(key); !ok {
@@ -219,12 +219,57 @@ func (sever *EdgeServer) Watch(w http.ResponseWriter, r *http.Request) {
 
 // BindObserver 的监听服务
 func (sever *EdgeServer) BindObserver(w http.ResponseWriter, r *http.Request) {
+
+	var (
+		vars   = mux.Vars(r)
+		key    = vars["key"]
+		stream *edge.MsgStream
+		err    error
+	)
+
+	stream, err = edge.Upgrade(w, r)
+	if err != nil {
+		AbortErr(w, http.StatusBadGateway, err)
+	}
+
+	log.Debugf("Bind: %s", key)
+
+	// topic := edgekv.Edgekey(serve.ID, "binder")
+	var msg = edgekv.Message{
+		From: string(serve.ID),
+		Type: edgekv.CmdDeclareBinder,
+		Payload: edgekv.MessageDeclareBinder{
+			Pattern: key,
+		},
+	}
+
+	// msg.Build()
+	serve.mq.Publish("binder", msg) // tell Center observer key binded
+	bindTopic := edgekv.Edgekey(serve.ID, "bind_get")
+
+	// var msgCh = make(chan edgekv.Message)
+	// subscribe bind_get topic, when center to get bind key
+	go serve.mq.Subscribe(bindTopic, func(msg edgekv.Message) error {
+		switch msg.Type {
+		case edgekv.CmdGetBind:
+			stream.SendMsg(msg)
+		case edgekv.CmdSetBind:
+			stream.SendMsg(msg)
+		default:
+			return errors.New("invalid msg type in Bind Get topic")
+		}
+		return nil
+	})
+
+	stream.MessageMsg(func(msg edgekv.Message) {
+
+	})
 }
 
 func (sever *EdgeServer) BindRead(w http.ResponseWriter, r *http.Request) {
 }
 
-func (sever *EdgeServer) BindWrite(w http.ResponseWriter, r *http.Request) {
+func (sever *EdgeServer) BindReceive(w http.ResponseWriter, r *http.Request) {
 }
 
 // Stop 停止服务
@@ -377,6 +422,18 @@ func (serve *EdgeServer) watch(prefix string, fn edgekv.ChangeFunc) {
 func (serve *EdgeServer) dispatch(key string, event edgekv.WatchEvent) {
 	log.Infof("dispatch to '%s'", key)
 	serve.listener.Dispatch(key, event)
+}
+
+// func (serve *EdgeServer) pushBind(sessID string, key string, timeout time.Duration) {
+// 	serve.bindSessions.Store(sessID, msg)
+// }
+
+func (serve *EdgeServer) popBind(sessID string) (edgekv.MessageGetBind, bool) {
+	if val, ok := serve.bindSessions.LoadAndDelete(sessID); ok {
+		return val.(edgekv.MessageGetBind), true
+	}
+
+	return edgekv.MessageGetBind{}, false
 }
 
 func Start() error {

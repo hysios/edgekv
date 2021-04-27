@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hysios/edgekv"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -44,5 +45,15 @@ func TestEdgeStore_Watch(t *testing.T) {
 	assert.NotNil(t, store)
 	go store.Watch("test.*", func(key string, old, new interface{}) error {
 		return nil
+	})
+}
+
+func TestEdgeStore_Bind(t *testing.T) {
+	store, err := Open()
+	assert.NoError(t, err)
+	assert.NotNil(t, store)
+
+	store.Bind("test.v", func(mt edgekv.BindMethod, key string, val interface{}) (interface{}, bool) {
+		panic("nonimplement")
 	})
 }

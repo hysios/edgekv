@@ -38,7 +38,7 @@ func Open() (edgekv.Database, error) {
 		},
 	}
 
-	store.Accessor = edgekv.MakeAccessor(store)
+	store.Accessor = edgekv.MakeAccessor(&EdgeWrap{store})
 	store.client = client
 
 	return store, nil
@@ -66,7 +66,15 @@ type EdgeEvent struct {
 	Change    interface{}
 }
 
-func (edge *EdgeStore) Get(key string) (interface{}, bool) {
+type EdgeWrap struct {
+	*EdgeStore
+}
+
+func (wrap *EdgeWrap) Get(key string) (interface{}, bool) {
+	return wrap.EdgeStore.Get(key)
+}
+
+func (edge *EdgeStore) Get(key string, opts ...edgekv.GetOpt) (interface{}, bool) {
 	var (
 		path                                      = edge.host(path.Join("key", key))
 		decoder func([]byte) (interface{}, error) = edge.decodeGob
@@ -87,7 +95,7 @@ func (edge *EdgeStore) Get(key string) (interface{}, bool) {
 	return val, true
 }
 
-func (edge *EdgeStore) Set(key string, val interface{}) {
+func (edge *EdgeStore) Set(key string, val interface{}, opts ...edgekv.SetOpt) {
 	var (
 		path = edge.host(path.Join("key", key))
 		u    *url.URL
@@ -141,34 +149,58 @@ func (edge *EdgeStore) Watch(prefix string, fn edgekv.ChangeFunc) {
 
 func (edge *EdgeStore) Bind(key string, fn edgekv.BindHandler) error {
 	var (
-		req  *http.Request
-		resp *http.Response
+		// req  *http.Request
+		// resp *http.Response
 		err  error
 		path = edge.parseKey(path.Join("bind_observer", key))
 	)
 
-	if req, err = http.NewRequest(http.MethodGet, path, nil); err != nil {
-		return fmt.Errorf("new req error %w", err)
+	msgsend, err := Connect(path)
+	if err != nil {
+		return err
 	}
 
-	req.Header.Add("Content-Type", edgekv.BinaryMimeType)
-	if resp, err = edge.client.Do(req); err != nil {
-		return fmt.Errorf("req error %s", err)
-	}
-
-	s := NewFrameScanner(resp.Body)
-	for event := range s.DecodeFrame() {
-		meth := edgekv.BindMethod(event.Method)
-		switch meth {
-		case edgekv.BindGet:
-			readVal, ok := fn(meth, key, nil)
-			edge.upstreamSync(event.SessionID, readVal, ok)
-		case edgekv.BindSet:
-			fn(meth, key, event.Change)
-		case edgekv.BindDelete:
-			// TODO: Bind Delete
+	msgsend.MessageMsg(func(msg edgekv.Message) {
+		switch msg.Type {
+		case edgekv.CmdGetBind:
+			if getmsg, ok := msg.Payload.(edgekv.MessageGetBind); ok {
+				getVal, found := fn(edgekv.BindGet, getmsg.Key, nil)
+				msgsend.SendMsg(edgekv.Message{
+					Type: edgekv.CmdRetBind,
+					Payload: edgekv.MessageRetBind{
+						Key:   getmsg.Key,
+						Value: getVal,
+						Found: found,
+					},
+				})
+			}
+		case edgekv.CmdSetBind:
+		case edgekv.CmdDeleteBind:
 		}
-	}
+	})
+
+	// if req, err = http.NewRequest(http.MethodGet, path, nil); err != nil {
+	// 	return fmt.Errorf("new req error %w", err)
+	// }
+
+	// req.Header.Add("Content-Type", edgekv.BinaryMimeType)
+	// if resp, err = edge.client.Do(req); err != nil {
+	// 	return fmt.Errorf("req error %s", err)
+	// }
+
+	// s := NewFrameScanner(resp.Body)
+	// for event := range s.DecodeFrame() {
+	// 	meth := edgekv.BindMethod(event.Method)
+	// 	switch meth {
+	// 	case edgekv.BindGet:
+	// 		readVal, ok := fn(meth, key, nil)
+	// 		edge.upstreamSync(event.SessionID, readVal, ok)
+	// 	case edgekv.BindSet:
+	// 		fn(meth, key, event.Change)
+	// 	case edgekv.BindDelete:
+	// 		// TODO: Bind Delete
+	// 	}
+	// }
 	return nil
 }
 

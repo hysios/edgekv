@@ -43,14 +43,6 @@ func (m *memStore) Set(key string, val interface{}) (old interface{}, err error)
 	return old, nil
 }
 
-func (m *memStore) Watch(prefix string, fn edgekv.ChangeFunc) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (m *memStore) Bind(prefix string, fn edgekv.BindHandler) error {
-	panic("not implemented") // TODO: Implement
-}
-
 func (m *memStore) SetSyncer(_ edgekv.MessageQueue) {
 }
 
@@ -59,3 +51,5 @@ func init() {
 		return OpenMapStore(), nil
 	})
 }
+
+var _ edgekv.Store = &memStore{}

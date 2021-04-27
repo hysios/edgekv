@@ -62,6 +62,12 @@ func TestEdgeStore_Set(t *testing.T) {
 	assert.Equal(t, age, 18)
 	createdAt := edgestore.GetTime("user.CreatedAt")
 	assert.Equal(t, createdAt, time.Date(1980, 1, 1, 12, 34, 45, 0, time.UTC))
+	friends, ok := edgestore.Get("user.Friends.1")
+	assert.True(t, ok)
+	assert.NotNil(t, friends)
+
+	friendName, _ := edgestore.Get("user.Friends.1.Name")
+	assert.Equal(t, friendName, "Alice")
 
 	edgestore2 := store.OpenEdge("ABETEST2")
 	edgestore2.Set("user", testUser{

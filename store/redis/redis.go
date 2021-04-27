@@ -195,3 +195,5 @@ func init() {
 		return OpenRedisStore(args[0])
 	})
 }
+
+var _ edgekv.CenterStore = &RedisStore{}

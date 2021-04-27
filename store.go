@@ -20,11 +20,11 @@ const (
 )
 
 type Database interface {
-	Get(key string) (val interface{}, ok bool)
-	Set(key string, val interface{})
+	Get(key string, opts ...GetOpt) (val interface{}, ok bool)
+	Set(key string, val interface{}, opts ...SetOpt)
 	Watch(pattern string, fn ChangeFunc)
 	// Unwatch(int)
-	Bind(key string, fn BindHandler) error
+	Bind(pattern string, fn BindHandler) error
 	Accessor
 }
 
@@ -97,3 +97,10 @@ func OpenStore(name string, args ...string) (Store, error) {
 		return opener(args...)
 	}
 }
+
+type Option struct {
+	Immediate bool
+}
+
+type GetOpt func(opts *Option)
+type SetOpt func(opts *Option)
