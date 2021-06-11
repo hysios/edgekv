@@ -48,7 +48,7 @@ func init() {
 	gob.Register(time.Time{})
 	gob.Register(map[string]interface{}{})
 	gob.Register(new(time.Duration))
-	gob.Register(new([]interface{}))
+	gob.Register([]interface{}{})
 	gob.Register(new(interface{}))
 	gob.Register(new(edgekv.MessageChangelog))
 	gob.Register(new(edgekv.Message))

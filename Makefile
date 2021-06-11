@@ -4,7 +4,7 @@ up:
 	@docker-compose up -d
 
 down:
-	@docker-compoes down
+	@docker-compose down
 
 doc:
 	@-pkill godoc
