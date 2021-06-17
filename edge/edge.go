@@ -92,7 +92,7 @@ func (edge *EdgeStore) Get(key string, opts ...edgekv.GetOpt) (interface{}, bool
 		return nil, false
 	}
 
-	return val, true
+	return val, val != nil
 }
 
 func (edge *EdgeStore) Set(key string, val interface{}, opts ...edgekv.SetOpt) {

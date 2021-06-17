@@ -72,6 +72,7 @@ type Accessor interface {
 	GetStringMapString(key string) map[string]string
 	GetStringMapStringSlice(key string) map[string][]string
 	GetSizeInBytes(key string) uint
+	SetDefault(key string, val interface{})
 	// UnmarshalKey(key string, rawVal interface{}, opts ...DecoderConfigOption) error
 	// Unmarshal(rawVal interface{}, opts ...DecoderConfigOption) error
 	// UnmarshalExact(rawVal interface{}, opts ...DecoderConfigOption) error

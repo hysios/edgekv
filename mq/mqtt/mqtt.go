@@ -77,9 +77,9 @@ func (mq *mqttMQ) ParseURI(uri string) (*mqtt.ClientOptions, error) {
 	opts.OnConnectionLost = mq.connectLostHandler
 	mq.parseQuery(opts, u.Query())
 
-	if len(opts.ClientID) == 0 {
-		opts.SetClientID(ClientID)
-	}
+	// if len(opts.ClientID) == 0 {
+	// 	opts.SetClientID(ClientID)
+	// }
 	return opts, nil
 }
 

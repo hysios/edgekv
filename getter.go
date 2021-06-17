@@ -3,6 +3,7 @@ package edgekv
 import (
 	"time"
 
+	"github.com/hysios/mapindex"
 	"github.com/hysios/utils/convert"
 )
 
@@ -11,13 +12,17 @@ type Getter interface {
 }
 
 type accessor struct {
-	getter Getter
+	getter   Getter
+	defaults map[string]interface{}
 }
 
 func (a *accessor) get(key string) interface{} {
 	if v, ok := a.getter.Get(key); ok {
 		return v
+	} else if a.defaults != nil {
+		return mapindex.Get(a.defaults, key)
 	}
+
 	return nil
 }
 
@@ -147,6 +152,14 @@ func (a *accessor) GetStringMapStringSlice(key string) map[string][]string {
 
 func (a *accessor) GetSizeInBytes(key string) uint {
 	panic("not implemented") // TODO: Implement
+}
+
+func (a *accessor) SetDefault(key string, val interface{}) {
+	if a.defaults == nil {
+		a.defaults = make(map[string]interface{})
+	}
+
+	mapindex.Set2(a.defaults, key, val)
 }
 
 func MakeAccessor(getter Getter) Accessor {
