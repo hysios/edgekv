@@ -9,7 +9,7 @@ import (
 
 func TestEdgeStore_Set(t *testing.T) {
 
-	store, err := OpenRedisStore("redis://127.0.0.1:6379/?db=3")
+	store, err := OpenRedisStore("redis://127.0.0.1:6379/edgekv?db=3")
 	if err != nil {
 		t.Fatalf("open redis failed %s", err)
 	}
@@ -120,7 +120,7 @@ func TestEdgeStore_Set(t *testing.T) {
 }
 
 func TestEdgeStore_Keys(t *testing.T) {
-	store, err := OpenRedisStore("redis://127.0.0.1:6379/?db=3")
+	store, err := OpenRedisStore("redis://127.0.0.1:6379/edgekv?db=3")
 	if err != nil {
 		t.Fatalf("open redis failed %s", err)
 	}

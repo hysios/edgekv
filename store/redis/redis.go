@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -10,7 +11,7 @@ import (
 	"time"
 
 	"github.com/fatih/structs"
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/hysios/edgekv"
 	"github.com/hysios/edgekv/utils"
 	"github.com/hysios/log"
@@ -46,6 +47,10 @@ func OpenRedisStore(uri string) (*RedisStore, error) {
 	return store, nil
 }
 
+func (store *RedisStore) fullkey(key string) string {
+	return store.Prefix + ":" + key
+}
+
 func (store *RedisStore) ParseURI(uri string) (*redis.Client, error) {
 	log.Infof("open redis store at %s", uri)
 	var u, err = url.Parse(uri)
@@ -59,6 +64,7 @@ func (store *RedisStore) ParseURI(uri string) (*redis.Client, error) {
 		opts.Password = pass
 	}
 
+	store.Prefix = strings.TrimPrefix(u.Path, "/")
 	store.parseQuery(opts, u.Query())
 	rdb := redis.NewClient(opts)
 
@@ -83,9 +89,10 @@ func (store *RedisStore) Get(key string) (val interface{}, ok bool) {
 		m              = make(map[string]interface{})
 		err            error
 		raw            []byte
+		ctx            = context.Background()
 	)
 
-	if raw, err = store.rdb.Get(prefix).Bytes(); err != nil {
+	if raw, err = store.rdb.Get(ctx, store.fullkey(prefix)).Bytes(); err != nil {
 		log.Debugf("redis_store: get key '%s' error: %s", prefix, err)
 		return nil, false
 	}
@@ -104,7 +111,8 @@ func (store *RedisStore) Get(key string) (val interface{}, ok bool) {
 }
 
 func (store *RedisStore) ListKeys(prefix string) []string {
-	keys, _, _ := store.rdb.Scan(0, prefix+"*", -1).Result()
+	var ctx = context.Background()
+	keys, _, _ := store.rdb.Scan(ctx, 0, store.fullkey(prefix+"*"), -1).Result()
 	for i, key := range keys {
 		keys[i] = strings.TrimPrefix(key, prefix)
 	}
@@ -144,11 +152,12 @@ func (store *RedisStore) Set(key string, val interface{}) (old interface{}, err 
 		prefix, subkey = edgekv.SplitKey(key)
 		m              = make(map[string]interface{})
 		raw            []byte
+		ctx            = context.Background()
 	)
 
 	val = store.value(val)
 
-	if raw, err = store.rdb.Get(prefix).Bytes(); err != nil {
+	if raw, err = store.rdb.Get(ctx, store.fullkey(prefix)).Bytes(); err != nil {
 		log.Debugf("redis_store: get key '%s' error: %s", prefix, err)
 	}
 
@@ -177,7 +186,7 @@ func (store *RedisStore) Set(key string, val interface{}) (old interface{}, err 
 		return nil, err
 	}
 
-	if _, err := store.rdb.Set(prefix, string(b), -1).Result(); err != nil {
+	if _, err := store.rdb.Set(ctx, store.fullkey(prefix), string(b), -1).Result(); err != nil {
 		// if _, err := store.rdb.Set(prefix, utils.Stringify(m), -1).Result(); err != nil {
 		log.Debugf("redis_store: set key %s error: %s", prefix, err)
 	}

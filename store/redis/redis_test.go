@@ -84,7 +84,7 @@ func TestMain(m *testing.M) {
 }
 
 func testServer(t *testing.T) *RedisStore {
-	store, err := OpenRedisStore("redis://127.0.0.1:6379/?db=3")
+	store, err := OpenRedisStore("redis://127.0.0.1:6379/edgekv?db=3")
 	if err != nil {
 		t.Fatalf("open redis failed %s", err)
 	}
@@ -148,14 +148,14 @@ func testStore(store *RedisStore, val interface{}) {
 	default:
 		v = structs.Map(x)
 	}
-
+	var ctx = context.Background()
 	for key, partv := range v {
 		var b []byte
 		if b, err = utils.Marshal(partv); err != nil {
 			log.Errorf("marshal %v", err)
 			continue
 		}
-		store.rdb.Set(key, b, -1).Err()
+		store.rdb.Set(ctx, key, b, -1).Err()
 	}
 
 }
