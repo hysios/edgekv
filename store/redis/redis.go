@@ -114,7 +114,7 @@ func (store *RedisStore) ListKeys(prefix string) []string {
 	var ctx = context.Background()
 	keys, _, _ := store.rdb.Scan(ctx, 0, store.fullkey(prefix+"*"), -1).Result()
 	for i, key := range keys {
-		keys[i] = strings.TrimPrefix(key, prefix)
+		keys[i] = strings.TrimPrefix(key, store.fullkey(prefix))
 	}
 	return keys
 }
