@@ -9,6 +9,7 @@ import (
 
 type Getter interface {
 	Get(key string) (interface{}, bool)
+	Keys() []string
 }
 
 type accessor struct {
@@ -160,6 +161,19 @@ func (a *accessor) SetDefault(key string, val interface{}) {
 	}
 
 	mapindex.Set2(a.defaults, key, val)
+}
+
+func (a *accessor) AllKeys() []string {
+	return a.getter.Keys()
+}
+
+func (a *accessor) AllSettings() map[string]interface{} {
+	var m = make(map[string]interface{})
+	for _, key := range a.getter.Keys() {
+		m[key] = a.get(key)
+	}
+
+	return m
 }
 
 func MakeAccessor(getter Getter) Accessor {

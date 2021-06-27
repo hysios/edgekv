@@ -73,11 +73,12 @@ type Accessor interface {
 	GetStringMapStringSlice(key string) map[string][]string
 	GetSizeInBytes(key string) uint
 	SetDefault(key string, val interface{})
+	AllKeys() []string
+	AllSettings() map[string]interface{}
 	// UnmarshalKey(key string, rawVal interface{}, opts ...DecoderConfigOption) error
 	// Unmarshal(rawVal interface{}, opts ...DecoderConfigOption) error
 	// UnmarshalExact(rawVal interface{}, opts ...DecoderConfigOption) error
-	// AllKeys() []string
-	// AllSettings() map[string]interface{}
+
 }
 
 type OpenStoreFunc func(args ...string) (Store, error)

@@ -35,6 +35,12 @@ func (wrap *CenterWrap) Get(key string) (val interface{}, ok bool) {
 	return wrap.CenterDatabase.Get(key)
 }
 
+func (wrap *CenterWrap) Keys() []string {
+	//TODO:
+	panic("nonimplement")
+
+}
+
 func (center *CenterDatabase) Get(key string, opts ...edgekv.GetOpt) (val interface{}, ok bool) {
 	return center.store.Get(key)
 }

@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"reflect"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fatih/structs"
@@ -100,6 +101,19 @@ func (store *RedisStore) Get(key string) (val interface{}, ok bool) {
 		val = m
 	}
 	return val, val != nil
+}
+
+func (store *RedisStore) ListKeys(prefix string) []string {
+	keys, _, _ := store.rdb.Scan(0, prefix+"*", -1).Result()
+	for i, key := range keys {
+		keys[i] = strings.TrimPrefix(key, prefix)
+	}
+	return keys
+}
+
+func (store *RedisStore) Keys() []string {
+	//TODO: 实现 keys
+	panic("nonimplement")
 }
 
 func (store *RedisStore) EdgeKey(edgeID edgekv.EdgeID, key string) string {

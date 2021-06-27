@@ -116,6 +116,8 @@ github.com/hysios/log v0.0.0-20210420091742-d54e2f0555dd h1:3wg8i4bCxJJ/sgjUmQn3
 github.com/hysios/log v0.0.0-20210420091742-d54e2f0555dd/go.mod h1:2N4rE2R8A6/fBHkpmOY/ov1xVXXjKFSuK35xFRVEgkc=
 github.com/hysios/mapindex v0.0.6 h1:Erwe7hOT9W0L33rMfIDcX9EXzw37jSKkMOuyyds0eMk=
 github.com/hysios/mapindex v0.0.6/go.mod h1:rdD9YpOCLpvYguO9wZY2xwowfpO5IPQAo+Itrm267V0=
+github.com/hysios/mapindex v0.1.2 h1:WZblJt/QHCqM/9wO+mS5u7rnpDPufBAZ0bxCdfLGXgo=
+github.com/hysios/mapindex v0.1.2/go.mod h1:FZDMNgyL1x2IcYjaKLYJazlEa7L592rhQxNSIoLeVdk=
 github.com/hysios/utils v0.0.0-20210420100011-86bae3066a15 h1:C+wJ8ToJLtci2qW8rjsoI1WoC9O7J7m2o+tPkOnmKCw=
 github.com/hysios/utils v0.0.0-20210420100011-86bae3066a15/go.mod h1:cpgG4aBCd3XLkQOraC1Hc/Hwrmdut+sawQj+EBLJUc0=
 github.com/hysios/utils v0.0.1 h1:XxLKKWtb5YNc0+CQTMy0XQqtQRSnmoQPJKIWLm409kM=

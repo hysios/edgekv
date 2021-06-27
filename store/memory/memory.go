@@ -35,6 +35,14 @@ func (m *memStore) Get(key string) (val interface{}, ok bool) {
 	return
 }
 
+func (m *memStore) Keys() []string {
+	var keys []string
+	for key := range m.values {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
 func (m *memStore) Set(key string, val interface{}) (old interface{}, err error) {
 	m.init()
 

@@ -118,3 +118,60 @@ func TestEdgeStore_Set(t *testing.T) {
 	createdAt = edgestore2.GetTime("user.CreatedAt")
 	assert.Equal(t, createdAt, time.Date(1980, 1, 1, 12, 34, 45, 0, time.UTC))
 }
+
+func TestEdgeStore_Keys(t *testing.T) {
+	store, err := OpenRedisStore("redis://127.0.0.1:6379/?db=3")
+	if err != nil {
+		t.Fatalf("open redis failed %s", err)
+	}
+
+	edgestore := store.OpenEdge("ABETEST1")
+	edgestore.Set("user", testUser{
+		Username:  "小张",
+		Age:       18,
+		Off:       true,
+		Price:     123.45,
+		CreatedAt: time.Date(1980, 1, 1, 12, 34, 45, 0, time.UTC),
+		Timeout:   34 * time.Second,
+		Tags:      []string{"high", "middle" /* "low", */, "nothing"},
+		Image:     []byte("JPEGx011\x11\x12"),
+		Org: struct {
+			OrgUID  string `json:"orgUID,omitempty"`
+			Name    string `json:"name,omitempty"`
+			Members int    `json:"members,omitempty"`
+			Owner   struct {
+				Username string `json:"username,omitempty"`
+				Email    string `json:"email,omitempty"`
+			} `json:"owner,omitempty"`
+		}{
+			OrgUID:  "12345",
+			Name:    "大中华区",
+			Members: 10,
+			Owner: struct {
+				Username string `json:"username,omitempty"`
+				Email    string `json:"email,omitempty"`
+			}{
+				Username: "jim",
+				Email:    "jim@example.com",
+			},
+		},
+		Friends: []struct {
+			Name string `json:"name,omitempty"`
+			Sex  int    `json:"sex,omitempty"`
+		}{{
+			"Jim",
+			1,
+		}, {
+			"Alice",
+			0,
+		}},
+	})
+
+	keys := edgestore.AllKeys()
+	assert.Greater(t, len(keys), 0)
+	t.Logf("keys %v", keys)
+
+	m := edgestore.AllSettings()
+	assert.NotNil(t, m)
+	t.Logf("m %v", m)
+}

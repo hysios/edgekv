@@ -74,6 +74,11 @@ func (wrap *EdgeWrap) Get(key string) (interface{}, bool) {
 	return wrap.EdgeStore.Get(key)
 }
 
+func (wrap *EdgeWrap) Keys() []string {
+	//TODO:
+	panic("nonimplement")
+}
+
 func (edge *EdgeStore) Get(key string, opts ...edgekv.GetOpt) (interface{}, bool) {
 	var (
 		path                                      = edge.host(path.Join("key", key))

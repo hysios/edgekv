@@ -44,6 +44,11 @@ func (store *buntdbStore) Get(key string) (val interface{}, ok bool) {
 	return val, true
 }
 
+func (store *buntdbStore) Keys() []string {
+	//TODO: 实现 keys
+	panic("nonimplement")
+}
+
 func (store *buntdbStore) Set(key string, val interface{}) (old interface{}, err error) {
 	var (
 		prefix, subkey = edgekv.SplitKey(key)

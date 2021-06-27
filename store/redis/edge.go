@@ -21,6 +21,15 @@ func (edge *EdgeStore) Get(key string) (val interface{}, ok bool) {
 	return edge.master.Get(fullkey)
 }
 
+func (edge *EdgeStore) Keys() []string {
+	var (
+		fullkey = edge.master.edgeNode(edge.ID, "")
+		keys    = edge.master.ListKeys(fullkey)
+	)
+
+	return keys
+}
+
 func (edge *EdgeStore) Set(key string, val interface{}) (old interface{}, err error) {
 	var (
 		fullkey = edge.master.edgeNode(edge.ID, key)
