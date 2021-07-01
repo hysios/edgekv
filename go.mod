@@ -14,7 +14,7 @@ require (
 	github.com/hysios/binary v0.0.0-20210423114437-89610a8c468d
 	github.com/hysios/log v0.0.0-20210420091742-d54e2f0555dd
 	github.com/hysios/mapindex v0.1.2
-	github.com/hysios/utils v0.0.9
+	github.com/hysios/utils v0.0.11
 	github.com/imdario/mergo v0.3.12
 	github.com/jinzhu/copier v0.3.0
 	github.com/kr/pretty v0.2.1

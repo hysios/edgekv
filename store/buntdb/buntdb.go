@@ -45,8 +45,17 @@ func (store *buntdbStore) Get(key string) (val interface{}, ok bool) {
 }
 
 func (store *buntdbStore) Keys() []string {
-	//TODO: 实现 keys
-	panic("nonimplement")
+	var keys []string
+	if err := store.db.View(func(tx *buntdb.Tx) error {
+		tx.Ascend("", func(key, value string) bool {
+			keys = append(keys, key)
+			return true
+		})
+		return nil
+	}); err != nil {
+		return nil
+	}
+	return keys
 }
 
 func (store *buntdbStore) Set(key string, val interface{}) (old interface{}, err error) {

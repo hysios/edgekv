@@ -57,3 +57,13 @@ func TestEdgeStore_Bind(t *testing.T) {
 		panic("nonimplement")
 	})
 }
+
+func TestEdgeStore_Keys(t *testing.T) {
+	store, err := Open()
+	assert.NoError(t, err)
+	assert.NotNil(t, store)
+	keys := store.AllKeys()
+	assert.NotNil(t, keys)
+	assert.Greater(t, len(keys), 0)
+	t.Logf("keys %v", keys)
+}

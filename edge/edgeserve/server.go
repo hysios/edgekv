@@ -49,6 +49,7 @@ func (serve *EdgeServer) Start() error {
 	r := mux.NewRouter()
 	r.HandleFunc("/key/{key}", serve.GetKey).Methods(http.MethodGet)
 	r.HandleFunc("/key/{key}", serve.SetKey).Methods(http.MethodPost)
+	r.HandleFunc("/keys", serve.Keys).Methods(http.MethodGet)
 	r.HandleFunc("/watch/{pattern}", serve.Watch).Methods(http.MethodGet)
 	r.HandleFunc("/bind_observer/{key}", serve.BindObserver).Methods(http.MethodGet)
 	r.HandleFunc("/bind/{sessID}", serve.BindRead).Methods(http.MethodGet)
@@ -177,6 +178,33 @@ func (serve *EdgeServer) SetKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	Jsonify(w, nil)
+}
+
+func (serve *EdgeServer) Keys(w http.ResponseWriter, r *http.Request) {
+	var (
+		encoder func(val interface{}, q url.Values) []byte
+		q       = r.URL.Query()
+		b       []byte
+	)
+	keys := serve.store.AllKeys()
+	if keys == nil {
+		AbortErr(w, http.StatusNotFound, fmt.Errorf("not have any keys"))
+		return
+	}
+	log.Infof("keys %v", keys)
+	contentType := r.Header.Get("Content-Type")
+	log.Debugf("context type %s", contentType)
+	encoder = serve.encodeGob
+	switch contentType {
+	case mime.TypeByExtension(".json"), "":
+		encoder = serve.encodeJson
+	case edgekv.BinaryMimeType:
+	}
+
+	b = encoder(edge.EdgeData{Status: "success", Data: keys}, q)
+	w.WriteHeader(200)
+	w.Header().Set("Content-Type", contentType)
+	w.Write(b)
 }
 
 // Watch 监听变化的键

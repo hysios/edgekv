@@ -75,8 +75,7 @@ func (wrap *EdgeWrap) Get(key string) (interface{}, bool) {
 }
 
 func (wrap *EdgeWrap) Keys() []string {
-	//TODO:
-	panic("nonimplement")
+	return wrap.EdgeStore.Keys()
 }
 
 func (edge *EdgeStore) Get(key string, opts ...edgekv.GetOpt) (interface{}, bool) {
@@ -98,6 +97,33 @@ func (edge *EdgeStore) Get(key string, opts ...edgekv.GetOpt) (interface{}, bool
 	}
 
 	return val, val != nil
+}
+
+func (edge *EdgeStore) Keys(opts ...edgekv.GetOpt) []string {
+	var (
+		path                                      = edge.host(path.Join("keys"))
+		decoder func([]byte) (interface{}, error) = edge.decodeGob
+		val     interface{}
+	)
+
+	resp, err := edge.get(path)
+	if err != nil {
+		return nil
+	}
+
+	b := edge.readBody(resp)
+	if val, err = decoder(b); err != nil {
+		log.Infof("decoder error %s", err)
+		return nil
+	}
+
+	log.Infof("val %#v", val)
+	vals, ok := val.([]string)
+	if !ok {
+		return nil
+	}
+
+	return vals
 }
 
 func (edge *EdgeStore) Set(key string, val interface{}, opts ...edgekv.SetOpt) {

@@ -127,3 +127,12 @@ func Test_buntdbStore_Set(t *testing.T) {
 	assert.True(t, ok)
 	t.Logf("test: %v", v)
 }
+
+func Test_buntdbStore_Keys(t *testing.T) {
+	store := testServer()
+
+	keys := store.AllKeys()
+	assert.NotNil(t, keys)
+	assert.Greater(t, len(keys), 0)
+	t.Logf("keys %v", keys)
+}
